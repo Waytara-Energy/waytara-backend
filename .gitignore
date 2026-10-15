@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# secrets and local settings: real values live in Render, never in git
+.env
+.env.*
+!.env.example
+
+# editors and the OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
