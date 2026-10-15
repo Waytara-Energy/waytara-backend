@@ -36,6 +36,12 @@ describe("CORS", () => {
     expect(res.headers["access-control-allow-origin"]).toBe("https://app.example.com");
   });
 
+  it("lets a listed website read the file name of a download", async () => {
+    app = await testApp();
+    const res = await app.inject({ method: "GET", url: "/healthz", headers: { origin: "https://app.example.com" } });
+    expect(res.headers["access-control-expose-headers"]).toContain("Content-Disposition");
+  });
+
   it("gives an unlisted website nothing to work with", async () => {
     app = await testApp();
     const res = await app.inject({ method: "GET", url: "/healthz", headers: { origin: "https://evil.example.net" } });

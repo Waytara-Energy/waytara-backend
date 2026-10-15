@@ -41,7 +41,7 @@ export async function registerSecurity(app: FastifyInstance, config: Config): Pr
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Authorization", "Content-Type", "X-Request-Id"],
-    exposedHeaders: ["X-Request-Id", "Retry-After"],
+    exposedHeaders: ["X-Request-Id", "Retry-After", "Content-Disposition"],
     credentials: false,
     maxAge: 600,
   });
