@@ -7,6 +7,7 @@ import { createSupabaseGatewayDb, SupabaseGatewayDb } from "./db/supabase-gatewa
 import { SupabaseIngestStore } from "./db/supabase-ingest-store.js";
 import { Broker } from "./features/broker/broker.js";
 import { KeyCache } from "./features/broker/key-cache.js";
+import { FrameArchive, startFrameArchive } from "./features/ocpp/frame-archive.js";
 import { FrameLog } from "./features/ocpp/frame-log.js";
 import { OcppHub } from "./features/ocpp/hub.js";
 import { ChargerRegistry } from "./features/ocpp/registry.js";
@@ -99,13 +100,28 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
     await registerKeyRoutes(app, new KeyService(db, vault, undefined, bus));
     readiness.register("database", () => db.ping());
 
+    const objectStore = options.deps?.objectStore ?? (config.r2 ? new R2ObjectStore(config.r2) : undefined);
+
     // EV chargers (OCPP 1.6-J): on whenever the database is, unless switched off
     const evStore = options.deps?.evStore ?? (config.ocppEnabled && db instanceof SupabaseGatewayDb ? new SupabaseEvStore(db) : undefined);
     if (evStore) {
       const registry = new ChargerRegistry(evStore, vault, bus);
       const frames = new FrameLog();
-      const hub = new OcppHub({ store: evStore, log: app.log, frameLog: (equipmentId, direction, raw) => frames.add(equipmentId, direction, raw) });
-      await registerOcppRoutes(app, { hub, registry, store: evStore, log: app.log, frames });
+      // every message goes to the in-memory log (staff, right now) and, when there is a file store, to the long-term message log in it
+      const archive = objectStore ? new FrameArchive({ store: objectStore, log: app.log, ...(options.deps?.clock ? { now: options.deps.clock } : {}) }) : undefined;
+      const hub = new OcppHub({
+        store: evStore,
+        log: app.log,
+        frameLog: (equipmentId, direction, raw) => {
+          frames.add(equipmentId, direction, raw);
+          archive?.add(equipmentId, direction, raw);
+        },
+      });
+      await registerOcppRoutes(app, { hub, registry, store: evStore, log: app.log, frames, ...(archive ? { archive } : {}) });
+      if (archive) {
+        const running = startFrameArchive(archive, app.log);
+        app.addHook("onClose", async () => running.stop());
+      }
       bus.onChanged((equipmentId) => {
         const c = hub.get(equipmentId);
         if (c) void registry.isActive(c.info.keyId).then((ok) => ok || hub.kick(equipmentId)).catch(() => undefined);
@@ -114,7 +130,6 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
     }
 
     const store = options.deps?.store ?? (config.gatewayIngest && db instanceof SupabaseGatewayDb ? new SupabaseIngestStore(db) : undefined);
-    const objectStore = options.deps?.objectStore ?? (config.r2 ? new R2ObjectStore(config.r2) : undefined);
     if (store) {
       const keys = new KeyCache(db, vault);
       const throttle = new Map<string, number>();

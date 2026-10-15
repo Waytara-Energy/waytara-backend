@@ -5,6 +5,8 @@ import WebSocket from "ws";
 import { KeyVault } from "../src/core/key-vault.js";
 import { KeyChangeBus } from "../src/lib/key-events.js";
 import { TokenError, type AuthUser, type TokenVerifier } from "../src/lib/jwt.js";
+import { gzipSync } from "node:zlib";
+import { MemoryObjectStore } from "../src/storage/object-store.js";
 import { FakeDb } from "./fakes.js";
 import { FakeEvStore } from "./fake-ev-store.js";
 import { FakeStore } from "./fake-store.js";
@@ -28,6 +30,7 @@ const verify: TokenVerifier = async (t) => {
 let app: FastifyInstance;
 let ev: FakeEvStore;
 let bus: KeyChangeBus;
+let files: MemoryObjectStore;
 let port: number;
 let sockets: WebSocket[] = [];
 const logs: string[] = [];
@@ -39,8 +42,9 @@ beforeEach(async () => {
   ev.access_.set(`${OWNER}|${EQ}`, "owner");
   ev.access_.set(`${STAFF}|${EQ}`, "staff");
   bus = new KeyChangeBus();
+  files = new MemoryObjectStore();
   const db = new FakeDb();
-  app = await testApp({}, { db, verify, vault, store: new FakeStore(), evStore: ev, bus } as never);
+  app = await testApp({}, { db, verify, vault, store: new FakeStore(), evStore: ev, bus, objectStore: files } as never);
   await app.listen({ host: "127.0.0.1", port: 0 });
   port = (app.server.address() as AddressInfo).port;
 });
@@ -431,6 +435,20 @@ describe("commands from people", () => {
     expect((await frames("tok-owner")).statusCode).toBe(404);
     expect((await frames("tok-stranger")).statusCode).toBe(404);
     expect((await app.inject({ method: "GET", url: `/v1/ev/${EQ}/frames` })).statusCode).toBe(401);
+  });
+
+  it("lets staff download a day of the long-term message log, and nobody else", async () => {
+    await files.put(`ocpp/v1/${EQ}/2026/10/15/101500-abcd-1.ndjson.gz`, gzipSync(Buffer.from(JSON.stringify({ t: "2026-10-15T10:15:00.000Z", d: "in", f: "[2]" }) + "\n")));
+    const get = (token: string, day = "2026-10-15") => app.inject({ method: "GET", url: `/v1/ev/${EQ}/frames/archive?day=${day}`, headers: { authorization: `Bearer ${token}` } });
+    const r = await get("tok-staff");
+    expect(r.statusCode).toBe(200);
+    expect(r.headers["content-type"]).toContain("application/x-ndjson");
+    expect(JSON.parse(r.body.trim())).toMatchObject({ d: "in", f: "[2]" });
+    expect((await get("tok-staff", "2026-10-14")).body).toBe("");
+    expect((await get("tok-staff", "2026-13-45")).statusCode).toBe(400);
+    expect((await get("tok-staff", "yesterday")).statusCode).toBe(400);
+    expect((await get("tok-owner")).statusCode).toBe(404);
+    expect((await get("tok-stranger")).statusCode).toBe(404);
   });
 
   it("answers 504 when the charger does not answer", async () => {

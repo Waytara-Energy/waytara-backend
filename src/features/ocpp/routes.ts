@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AppError, badRequest, notFound } from "../../lib/errors.js";
 import { clientIp } from "../../plugins/auth.js";
 import { registerWebSocket } from "../../plugins/websocket.js";
+import type { FrameArchive } from "./frame-archive.js";
 import type { FrameLog } from "./frame-log.js";
 import type { OcppHub } from "./hub.js";
 import type { ChargerRegistry } from "./registry.js";
@@ -28,6 +29,8 @@ export interface OcppRouteDeps {
   log: { info(o: object, m: string): void; warn(o: object, m: string): void };
   /** the recent messages of each charger, for staff */
   frames?: FrameLog;
+  /** the long-term message log in the file store */
+  archive?: FrameArchive;
 }
 
 function basicAuth(header: string | undefined): { user: string; password: string } | null {
@@ -125,6 +128,25 @@ export async function registerOcppRoutes(app: FastifyInstance, d: OcppRouteDeps)
     const { limit } = parse(z.object({ limit: z.coerce.number().int().min(1).max(300).default(100) }), request.query);
     if ((await d.store.access(request.user!.id, equipment)) !== "staff") throw notFound();
     return { frames: d.frames?.list(equipment, limit) ?? [] };
+  });
+
+  // The long-term message log of one UTC day, as lines of JSON (staff only; at most 20 000 lines). The last ten minutes are still in
+  // memory: they show up in the call above, and here after the next write.
+  app.get("/v1/ev/:equipment/frames/archive", { ...signedIn, config: limited }, async (request, reply) => {
+    const { equipment } = parse(id, request.params);
+    const { day } = parse(z.object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }), request.query);
+    if (Number.isNaN(Date.parse(`${day}T00:00:00Z`))) throw badRequest("The day is not a real date");
+    if ((await d.store.access(request.user!.id, equipment)) !== "staff") throw notFound();
+    if (!d.archive) throw new AppError(503, "unavailable", "The message log is not kept on this server");
+    try {
+      const r = await d.archive.readDay(equipment, day);
+      reply.header("Cache-Control", "no-store");
+      reply.header("X-Truncated", r.truncated ? "true" : "false");
+      reply.type("application/x-ndjson");
+      return r.lines.join("\n") + (r.lines.length ? "\n" : "");
+    } catch {
+      throw new AppError(503, "unavailable", "The message log could not be read right now");
+    }
   });
 
   app.post("/v1/ev/:equipment/remote-start", { ...signedIn, config: limited }, async (request) => {
