@@ -7,6 +7,11 @@ import { createSupabaseGatewayDb, SupabaseGatewayDb } from "./db/supabase-gatewa
 import { SupabaseIngestStore } from "./db/supabase-ingest-store.js";
 import { Broker } from "./features/broker/broker.js";
 import { KeyCache } from "./features/broker/key-cache.js";
+import { OcppHub } from "./features/ocpp/hub.js";
+import { ChargerRegistry } from "./features/ocpp/registry.js";
+import { registerOcppRoutes } from "./features/ocpp/routes.js";
+import type { EvStore } from "./features/ocpp/store.js";
+import { SupabaseEvStore } from "./db/supabase-ev-store.js";
 import { CadenceArchive } from "./features/cadence/archive.js";
 import { startCadenceMaintenance } from "./features/cadence/maintenance.js";
 import { registerCadenceRoutes } from "./features/cadence/routes.js";
@@ -40,8 +45,12 @@ export interface Deps {
   vault: KeyVault;
   /** where decoded data goes; without it the board connection and data intake stay switched off */
   store: IngestStore;
+  /** where the OCPP server (EV chargers) keeps sessions, samples and events; without it chargers cannot connect */
+  evStore: EvStore;
   /** where cadence files are kept; without it cadence data is not kept or served */
   objectStore: ObjectStore;
+  /** tells the rest of the backend that an equipment's keys changed; tests share it to trigger that */
+  bus: KeyChangeBus;
   /** the clock the report rules use (limits on how far back and how far ahead); tests fix it */
   clock: () => number;
 }
@@ -84,10 +93,23 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
   const verify = options.deps?.verify ?? (config.supabase ? createSupabaseTokenVerifier(config.supabase.url) : undefined);
   const vault = options.deps?.vault ?? (config.keyMasters ? new KeyVault(config.keyMasters) : undefined);
   if (db && verify && vault) {
-    const bus = new KeyChangeBus();
+    const bus = options.deps?.bus ?? new KeyChangeBus();
     registerAuth(app, verify);
     await registerKeyRoutes(app, new KeyService(db, vault, undefined, bus));
     readiness.register("database", () => db.ping());
+
+    // EV chargers (OCPP 1.6-J): on whenever the database is, unless switched off
+    const evStore = options.deps?.evStore ?? (config.ocppEnabled && db instanceof SupabaseGatewayDb ? new SupabaseEvStore(db) : undefined);
+    if (evStore) {
+      const registry = new ChargerRegistry(evStore, vault, bus);
+      const hub = new OcppHub({ store: evStore, log: app.log });
+      await registerOcppRoutes(app, { hub, registry, store: evStore, log: app.log });
+      bus.onChanged((equipmentId) => {
+        const c = hub.get(equipmentId);
+        if (c) void registry.isActive(c.info.keyId).then((ok) => ok || hub.kick(equipmentId)).catch(() => undefined);
+      });
+      app.addHook("onClose", async () => hub.closeAll());
+    }
 
     const store = options.deps?.store ?? (config.gatewayIngest && db instanceof SupabaseGatewayDb ? new SupabaseIngestStore(db) : undefined);
     const objectStore = options.deps?.objectStore ?? (config.r2 ? new R2ObjectStore(config.r2) : undefined);

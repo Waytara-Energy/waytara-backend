@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { redactUrl } from "../src/lib/redact.js";
 
 describe("redactUrl", () => {
+  it("hides a charger's secret in its address and keeps the charger name", () => {
+    expect(redactUrl("/ocpp/k3x9q2m7p4w8z1n5v6c0b2d4/WT_PZ_7k_1")).toBe("/ocpp/[redacted]/WT_PZ_7k_1");
+    expect(redactUrl("/ocpp/k3x9q2m7p4w8z1n5v6c0b2d4/WT_PZ_7k_1?x=1&token=abc")).toBe("/ocpp/[redacted]/WT_PZ_7k_1?x=1&token=[redacted]");
+    expect(redactUrl("/ocpp/WT_PZ_7k_1")).toBe("/ocpp/WT_PZ_7k_1"); // the Basic-authentication form has no secret in the address
+  });
+
   it("leaves a url without a query alone", () => {
     expect(redactUrl("/healthz")).toBe("/healthz");
   });

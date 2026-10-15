@@ -7,7 +7,11 @@ const SECRET_QUERY_KEYS = /^(token|ticket|key|secret|password|pass|apikey|api_ke
 
 const REDACTED = "[redacted]";
 
-export function redactUrl(raw: string): string {
+/** A charger's address carries its secret as the first of two path segments: /ocpp/<secret>/<charger name>. */
+const CHARGER_PATH = /^(\/ocpp\/)[^/?#]+(\/[^/?#]+)/i;
+
+export function redactUrl(input: string): string {
+  const raw = input.replace(CHARGER_PATH, `$1${REDACTED}$2`);
   const q = raw.indexOf("?");
   if (q < 0) return raw;
   const path = raw.slice(0, q);

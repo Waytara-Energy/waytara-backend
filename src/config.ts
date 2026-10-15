@@ -83,6 +83,8 @@ const schema = z
     R2_BUCKET: z.string().regex(/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/, "must be a bucket name").optional(),
     /** false switches the MQTT broker and the data intake off (the key and claim endpoints keep working) */
     GATEWAY_INGEST: asBoolean.default(true),
+    /** false switches the EV charger (OCPP) server off */
+    OCPP_ENABLED: asBoolean.default(true),
     APP_VERSION: z.string().min(1).max(64).optional(),
     RENDER_GIT_COMMIT: z.string().min(7).max(64).optional(),
   })
@@ -133,6 +135,8 @@ export interface Config {
   keyMasters?: { current: Buffer; previous?: Buffer };
   /** the MQTT broker and the data intake run (default); false is the off switch */
   gatewayIngest: boolean;
+  /** the EV charger (OCPP) server runs (default); false is the off switch */
+  ocppEnabled: boolean;
   /** present when the file store (Cloudflare R2) is set; cadence data is kept and served only then */
   r2?: { accountId: string; accessKeyId: string; secretAccessKey: string; bucket: string };
   version: string;
@@ -175,6 +179,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       : {}),
     ...(e.KEY_ENCRYPTION_MASTER ? { keyMasters: { current: e.KEY_ENCRYPTION_MASTER, ...(e.KEY_ENCRYPTION_MASTER_PREVIOUS ? { previous: e.KEY_ENCRYPTION_MASTER_PREVIOUS } : {}) } } : {}),
     gatewayIngest: e.GATEWAY_INGEST,
+    ocppEnabled: e.OCPP_ENABLED,
     ...(e.R2_ACCOUNT_ID && e.R2_ACCESS_KEY_ID && e.R2_SECRET_ACCESS_KEY && e.R2_BUCKET
       ? { r2: { accountId: e.R2_ACCOUNT_ID, accessKeyId: e.R2_ACCESS_KEY_ID, secretAccessKey: e.R2_SECRET_ACCESS_KEY, bucket: e.R2_BUCKET } }
       : {}),
