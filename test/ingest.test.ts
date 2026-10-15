@@ -85,6 +85,19 @@ describe("data becomes finished buckets", () => {
     expect(latest.get("battery_power_w")!.value).toBe(0);
   });
 
+  it("sends the running figures of the unfinished bucket with every write", async () => {
+    await feed(7, S, S + 1200);
+    nowMs = (S + 1200) * 1000 + 3000;
+    await svc.flush(EQ, nowMs);
+    const open = store.writes[0]!.open;
+    const pv = open.find((o) => o.key === "pv1_power_w")!;
+    expect(pv.bucket.start).toBe(S + 900);
+    expect(pv.bucket.covered).toBeGreaterThan(290);
+    expect(pv.bucket.covered).toBeLessThanOrEqual(305);
+    expect(pv.bucket.last).toBe(100);
+    expect(open.length).toBe(new Set(store.allBuckets().map((b) => b.key)).size);
+  });
+
   it("reads a signed value, a scaled value and keeps negative parts only when negative", async () => {
     await feed(7, S, S + 900, 1, { bat: 65476, day: 123 }); // 65476 = -60
     nowMs = (S + 900) * 1000 + 3000;
@@ -325,19 +338,41 @@ describe("a restart when a reading is held into the next bucket", () => {
 describe("heartbeat and register map", () => {
   const hb = (over: Record<string, unknown> = {}) => ({ boot: 7, uptime_s: 100, inverter_online: true, map_ver: 1, clock_valid: true, device_time_ms: nowMs + 2000, fw_version: "2.0.1", rssi: -61, ...over });
 
-  it("writes the first heartbeat, then at most every 30 s unless something changed", async () => {
+  it("writes every 10 s check-in, but not a burst of them, unless something changed", async () => {
     nowMs = (S + 10) * 1000;
     await svc.handleUp(EQ, "hb", sealUp("hb", hb()));
-    nowMs += 10_000;
+    nowMs += 3_000;
+    await svc.handleUp(EQ, "hb", sealUp("hb", hb({ uptime_s: 103 })));
+    expect(store.heartbeats).toHaveLength(1); // too soon after the last write
+    nowMs += 7_000;
     await svc.handleUp(EQ, "hb", sealUp("hb", hb({ uptime_s: 110 })));
-    expect(store.heartbeats).toHaveLength(1);
+    expect(store.heartbeats).toHaveLength(2); // the regular 10 s check-in is written: the database judges "offline" after 3 missed ones
+    nowMs += 2_000;
+    await svc.handleUp(EQ, "hb", sealUp("hb", hb({ inverter_online: false })));
+    expect(store.heartbeats).toHaveLength(3); // a change is written at once
+    expect(store.heartbeats[2]!.inverterOnline).toBe(false);
+    expect(store.heartbeats[2]!.uploadIntervalS).toBe(900);
+  });
+
+  it("says so, once a minute, when a check-in is not in the agreed shape", async () => {
+    const warns: string[] = [];
+    svc = new IngestService({
+      keys: new KeyCache(db, vault, 30_000, () => nowMs),
+      store,
+      publish: async () => undefined,
+      log: { info: () => undefined, warn: (_o: unknown, m?: string) => void warns.push(String(m)) },
+      now: () => nowMs,
+      onRejected: () => undefined,
+    });
+    nowMs = (S + 10) * 1000;
+    await svc.handleUp(EQ, "hb", sealUp("hb", hb({ seq_acked: -1 })));
     nowMs += 10_000;
-    await svc.handleUp(EQ, "hb", sealUp("hb", hb({ inverter_online: false })));
-    expect(store.heartbeats).toHaveLength(2);
-    expect(store.heartbeats[1]!.inverterOnline).toBe(false);
-    nowMs += 31_000;
-    await svc.handleUp(EQ, "hb", sealUp("hb", hb({ inverter_online: false })));
-    expect(store.heartbeats).toHaveLength(3);
+    await svc.handleUp(EQ, "hb", sealUp("hb", hb({ seq_acked: -1 })));
+    expect(store.heartbeats).toHaveLength(0);
+    expect(warns).toEqual(["heartbeat has the wrong shape"]);
+    nowMs += 60_000;
+    await svc.handleUp(EQ, "hb", sealUp("hb", hb({ seq_acked: -1 })));
+    expect(warns).toHaveLength(2);
   });
 
   it("reports the board's clock difference only when the board says its clock is valid", async () => {

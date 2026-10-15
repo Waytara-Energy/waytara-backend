@@ -11,8 +11,8 @@ Design and decisions: `docs/GATEWAY_ARCHITECTURE_V2.md` in the dashboard reposit
 | **A2** skeleton: settings, health, security layer, safe logs, CI | done |
 | **A3** core libraries: sealed messages, decode, 15-minute summaries, register map | done |
 | **A4a** sign-in checks, equipment keys, claim tickets, the database layer | done |
-| **A4b** built-in MQTT broker (`/mqtt`, WebSocket) and the data intake (sealed batches to 15-minute summaries, acknowledgements, register map) | done; stays off in production until A4c supplies the storage |
-| A4c storage in Supabase, device status, live end-to-end test | next |
+| **A4b** built-in MQTT broker (`/mqtt`, WebSocket) and the data intake (sealed batches to 15-minute summaries, acknowledgements, register map) | done |
+| **A4c** storage in Supabase (`src/db/supabase-ingest-store.ts`), device status, broker on by default, simulated board | built; live end-to-end run pending |
 | A5 cadence storage and reports; A6 to A11 firmware, setup page, data path, write-back, dashboard, cut-over; Part B EV charger | later |
 
 The core libraries (`src/core`) are plain functions with no network or database; the runtime is built from them.
@@ -37,6 +37,10 @@ Keys are encrypted with `KEY_ENCRYPTION_MASTER` before they are stored; answers 
 Boards connect with MQTT over `wss://hub.waytaraenergy.com/mqtt`. Login: user name = equipment id, client id = `gw-<equipment id>`, password = a token derived one way from the equipment key (`base64url(HMAC-SHA-256(key, "wt-mqtt-login/v1|<id>"))`, vectors in `test-vectors/mqtt-login.json`). A board may publish only `wt/v1/<id>/up/{data,hb,evt,state}`, subscribe only to `wt/v1/<id>/dn/{ack,cmd,map}` (no wildcards), and use only its own `up/state` as last-will. Every refusal looks the same to the board. Revoking or rotating a key drops the connection within seconds; a source address with too many failed logins is shut out for a minute.
 
 Sealed batches become 15-minute summaries; a frame is acknowledged only once the summary containing it has been written and is at least two minutes behind the last written boundary, so a restart can rebuild the open bucket from frames the board still holds.
+
+Storage is `src/db/supabase-ingest-store.ts`, which calls `gw_equipment_profile`, `gw_store_map`, `gw_ingest_summaries` and `gw_report_heartbeat` (migration `20261015020000_gateway_ingest.sql` in the dashboard repository). The broker and the intake start by default whenever the database settings are present; `GATEWAY_INGEST=false` switches them off. A board's check-in is written every 10 s, and the database turns three missed check-ins into "offline".
+
+Try it without hardware: `SIM_URL=wss://hub.waytaraenergy.com/mqtt SIM_EQUIPMENT_ID=<id> SIM_KEY_FILE=<file with the key> npx tsx scripts/simulate-board.ts 240` (see the top of `scripts/simulate-board.ts`).
 
 ## Run it
 
@@ -87,6 +91,7 @@ src/
   features/keys/     key and claim logic, key generation, the HTTP routes
   features/broker/   the MQTT broker (Aedes), topic rules, key cache, the /mqtt WebSocket route
   features/ingest/   sealed message intake: decode, summaries, acknowledgements, register map, heartbeat
+  db/supabase-ingest-store.ts  the intake's storage (gw_* functions)
   lib/jwt.ts         sign-in token verification
   server.ts          start-up and signal handling
   app.ts             builds the web app (also used by tests)
@@ -100,7 +105,7 @@ src/
 test/                one file per area; no test needs the network
 test/fixtures/       the Waytara Office catalogue and a replayed afternoon of real readings
 test-vectors/        shared proofs that the firmware and this backend agree (seal.json, decode.json, claim.json, mqtt-login.json)
-scripts/             make-seal-vectors.ts, make-claim-vectors.ts, make-mqtt-login-vectors.ts (only when a format is changed on purpose); check-supabase.ts
+scripts/             simulate-board.ts (a stand-in board), make-seal-vectors.ts, make-claim-vectors.ts, make-mqtt-login-vectors.ts (only when a format is changed on purpose); check-supabase.ts
 ```
 
 ## Conventions

@@ -70,6 +70,8 @@ const schema = z
     SUPABASE_SERVICE_USER_PASSWORD: z.string().min(8).max(512).optional(),
     KEY_ENCRYPTION_MASTER: asMasterKey.optional(),
     KEY_ENCRYPTION_MASTER_PREVIOUS: asMasterKey.optional(),
+    /** false switches the MQTT broker and the data intake off (the key and claim endpoints keep working) */
+    GATEWAY_INGEST: asBoolean.default(true),
     APP_VERSION: z.string().min(1).max(64).optional(),
     RENDER_GIT_COMMIT: z.string().min(7).max(64).optional(),
   })
@@ -114,6 +116,8 @@ export interface Config {
   /** present when the database settings are set; the key and claim features exist only then */
   supabase?: { url: string; anonKey: string; serviceEmail: string; servicePassword: string };
   keyMasters?: { current: Buffer; previous?: Buffer };
+  /** the MQTT broker and the data intake run (default); false is the off switch */
+  gatewayIngest: boolean;
   version: string;
 }
 
@@ -153,6 +157,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       ? { supabase: { url: e.SUPABASE_URL, anonKey: e.SUPABASE_ANON_KEY, serviceEmail: e.SUPABASE_SERVICE_USER_EMAIL, servicePassword: e.SUPABASE_SERVICE_USER_PASSWORD } }
       : {}),
     ...(e.KEY_ENCRYPTION_MASTER ? { keyMasters: { current: e.KEY_ENCRYPTION_MASTER, ...(e.KEY_ENCRYPTION_MASTER_PREVIOUS ? { previous: e.KEY_ENCRYPTION_MASTER_PREVIOUS } : {}) } } : {}),
+    gatewayIngest: e.GATEWAY_INGEST,
     version: e.APP_VERSION ?? commit ?? "dev",
   };
 }

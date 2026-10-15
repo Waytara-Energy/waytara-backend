@@ -3,7 +3,8 @@ import type { Writable } from "node:stream";
 import type { Config } from "./config.js";
 import { KeyVault } from "./core/key-vault.js";
 import type { GatewayDb } from "./db/gateway-db.js";
-import { createSupabaseGatewayDb } from "./db/supabase-gateway-db.js";
+import { createSupabaseGatewayDb, SupabaseGatewayDb } from "./db/supabase-gateway-db.js";
+import { SupabaseIngestStore } from "./db/supabase-ingest-store.js";
 import { Broker } from "./features/broker/broker.js";
 import { KeyCache } from "./features/broker/key-cache.js";
 import { registerBrokerRoute } from "./features/broker/routes.js";
@@ -77,7 +78,7 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
     await registerKeyRoutes(app, new KeyService(db, vault, undefined, bus));
     readiness.register("database", () => db.ping());
 
-    const store = options.deps?.store;
+    const store = options.deps?.store ?? (config.gatewayIngest && db instanceof SupabaseGatewayDb ? new SupabaseIngestStore(db) : undefined);
     if (store) {
       const keys = new KeyCache(db, vault);
       const throttle = new Map<string, number>();

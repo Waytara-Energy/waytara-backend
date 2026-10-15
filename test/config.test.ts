@@ -15,6 +15,13 @@ describe("loadConfig", () => {
     expect(c.version).toBe("dev");
   });
 
+  it("runs the broker and the data intake unless GATEWAY_INGEST says false", () => {
+    expect(loadConfig({}).gatewayIngest).toBe(true);
+    expect(loadConfig({ GATEWAY_INGEST: "false" }).gatewayIngest).toBe(false);
+    expect(loadConfig({ GATEWAY_INGEST: "0" }).gatewayIngest).toBe(false);
+    expect(() => loadConfig({ GATEWAY_INGEST: "maybe" })).toThrow(ConfigError);
+  });
+
   it("reads numbers, booleans and a list of websites", () => {
     const c = loadConfig({
       PORT: "10000",

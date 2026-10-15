@@ -1,9 +1,8 @@
 import type { MetricDef } from "../../core/decode.js";
-import type { ClosedBucket } from "../../core/rollup.js";
+import type { BucketStats, ClosedBucket } from "../../core/rollup.js";
 
 /**
- * What the data intake needs from storage. The Supabase implementation arrives in task A4c; until then the intake is tested against
- * an in-memory stand-in. Writes REPLACE: sending the same bucket again changes nothing, so a retry or a late reading is safe.
+ * What the data intake needs from storage. The Supabase implementation is db/supabase-ingest-store.ts; tests use an in-memory stand-in. Writes REPLACE: sending the same bucket again changes nothing, so a retry or a late reading is safe.
  */
 
 export interface EquipmentProfile {
@@ -21,6 +20,8 @@ export interface EquipmentProfile {
 export interface SummaryWrite {
   equipmentId: string;
   buckets: ClosedBucket[];
+  /** the unfinished bucket of each value as it stands at the time of writing */
+  open: { key: string; bucket: BucketStats }[];
   /** the newest decoded value of each key since the last write; ts is seconds since 1970 */
   latest: { key: string; value: number; ts: number }[];
 }
@@ -40,6 +41,8 @@ export interface HeartbeatReport {
   resetReason?: string;
   /** device clock minus server clock, seconds; only when the device says its clock is valid */
   clockOffsetS?: number;
+  /** how often summaries are written for this unit, seconds */
+  uploadIntervalS?: number;
 }
 
 export interface IngestStore {

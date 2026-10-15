@@ -87,7 +87,8 @@ export class SupabaseGatewayDb implements GatewayDb {
     return this.signedIn;
   }
 
-  private async call(fn: string, args: Record<string, unknown>): Promise<unknown> {
+  /** Calls one waytara.* function as the service user (signs in when needed, once more after an expired token). */
+  async call(fn: string, args: Record<string, unknown>): Promise<unknown> {
     await this.login();
     let r = await this.client.rpc(fn, args);
     if (r.error && isAuthFailure(r.error)) {

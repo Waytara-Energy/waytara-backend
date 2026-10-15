@@ -143,6 +143,16 @@ describe("RollupEngine", () => {
     expect(e.open("none", S)).toBeNull();
   });
 
+  it("lists the unfinished bucket of every value that has readings", () => {
+    const e = new RollupEngine();
+    feed(e, "pv", S, S + 100, 5, () => 10);
+    feed(e, "soc", S, S + 100, 5, () => 80);
+    const all = e.openAll(S + 100);
+    expect(all.map((o) => o.key).sort()).toEqual(["pv", "soc"]);
+    expect(all.find((o) => o.key === "soc")!.bucket).toMatchObject({ start: S, covered: 100, wsum: 8000 });
+    expect(new RollupEngine().openAll(S)).toEqual([]);
+  });
+
   it("carries a reading's hold across the boundary into the next bucket", () => {
     const e = new RollupEngine();
     e.add("pv", E - 20, 50, 5);

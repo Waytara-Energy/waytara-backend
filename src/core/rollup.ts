@@ -185,6 +185,16 @@ export class RollupEngine {
     return computeBucket(s.readings, bucketStartOf(now), s.hold, now);
   }
 
+  /** The current, unfinished bucket of every value that has readings, as it stands now. */
+  openAll(now: number): { key: string; bucket: BucketStats }[] {
+    const out: { key: string; bucket: BucketStats }[] = [];
+    for (const key of this.keys.keys()) {
+      const bucket = this.open(key, now);
+      if (bucket) out.push({ key, bucket });
+    }
+    return out;
+  }
+
   /** Drops readings no later bucket can need, keeping the newest one before the cut-off because its hold may reach into it. */
   private prune(now: number): void {
     const cutoff = bucketStartOf(now) - this.retain;

@@ -35,7 +35,9 @@ export interface IngestDeps {
 const ACK_LAG_S = 120;
 const FRAME_MAX_AGE_MS = 36 * 3600_000;
 const FRAME_MAX_FUTURE_MS = 10 * 60_000;
-const HEARTBEAT_WRITE_EVERY_MS = 30_000;
+// A write per check-in (they come every 10 s): the database judges "offline" after three missed check-ins, so writing less often
+// than that would make a healthy unit look offline.
+const HEARTBEAT_WRITE_EVERY_MS = 9_000;
 const MAP_REBUILD_AFTER_MS = 10 * 60_000;
 const RETRY_AFTER_FAILED_WRITE_MS = 30_000;
 const EPOCH_2026 = Date.UTC(2026, 0, 1) / 1000;
@@ -71,6 +73,7 @@ const emptyStats = (): Session["stats"] => ({ batches: 0, frames: 0, duplicates:
 export class IngestService {
   private readonly sessions = new Map<string, Session>();
   private readonly opening = new Map<string, Promise<Session | null>>();
+  private readonly shapeWarned = new Map<string, number>();
   private readonly now: () => number;
   private timer: NodeJS.Timeout | undefined;
 
@@ -189,8 +192,7 @@ export class IngestService {
   private async onData(s: Session, raw: unknown): Promise<void> {
     const parsed = dataBody.safeParse(raw);
     if (!parsed.success) {
-      this.d.log.warn({ equipmentId: s.equipmentId, problems: parsed.error.issues.slice(0, 3).map((i) => i.path.join(".")) }, "data batch has the wrong shape");
-      return;
+      return this.wrongShape(s, "data batch", parsed.error.issues);
     }
     const body: DataBody = parsed.data;
     s.stats.batches++;
@@ -239,9 +241,17 @@ export class IngestService {
 
   // ---- heartbeat and events
 
+  /** A sealed message that opened fine but is not in the agreed shape: a firmware bug. Said once a minute per board and kind. */
+  private wrongShape(s: Session, what: string, issues: readonly { path: PropertyKey[] }[]): void {
+    const k = `${s.equipmentId}|${what}`;
+    if (this.now() - (this.shapeWarned.get(k) ?? 0) < 60_000) return;
+    this.shapeWarned.set(k, this.now());
+    this.d.log.warn({ equipmentId: s.equipmentId, problems: issues.slice(0, 3).map((i) => i.path.map(String).join(".")) }, `${what} has the wrong shape`);
+  }
+
   private async onHeartbeat(s: Session, raw: unknown): Promise<void> {
     const parsed = hbBody.safeParse(raw);
-    if (!parsed.success) return;
+    if (!parsed.success) return this.wrongShape(s, "heartbeat", parsed.error.issues);
     const h = parsed.data;
     const nowMs = this.now();
     const changed = h.inverter_online !== s.lastHbInverterOnline || h.map_ver !== s.lastHbMapVer;
@@ -254,6 +264,7 @@ export class IngestService {
       receivedAt: nowMs / 1000,
       boot: h.boot,
       uptimeS: h.uptime_s,
+      uploadIntervalS: s.profile.uploadIntervalS,
       ...(h.inverter_online !== undefined ? { inverterOnline: h.inverter_online } : {}),
       ...(h.last_modbus_ok_age_s !== undefined ? { lastModbusOkAgeS: h.last_modbus_ok_age_s } : {}),
       ...(h.fw_version ? { fwVersion: h.fw_version } : {}),
@@ -268,7 +279,7 @@ export class IngestService {
 
   private async onEvent(s: Session, raw: unknown): Promise<void> {
     const parsed = evtBody.safeParse(raw);
-    if (!parsed.success) return;
+    if (!parsed.success) return this.wrongShape(s, "event", parsed.error.issues);
     const e = parsed.data;
     this.d.log.info({ equipmentId: s.equipmentId, type: e.type, fw: e.fw_version, mapVer: e.map_ver }, "board event");
     if ((e.type === "hello" || e.type === "boot") && e.map_ver !== s.mapVersion) await this.publishMap(s, false);
@@ -329,7 +340,8 @@ export class IngestService {
     const closed = session.engine.collectClosed(nowS);
     const latest = [...session.latest].map(([key, v]) => ({ key, value: v.value, ts: v.ts }));
     try {
-      if (closed.length > 0 || latest.length > 0) await this.d.store.writeSummaries({ equipmentId: session.equipmentId, buckets: closed, latest });
+      const open = session.engine.openAll(nowS);
+      if (closed.length > 0 || latest.length > 0 || open.length > 0) await this.d.store.writeSummaries({ equipmentId: session.equipmentId, buckets: closed, open, latest });
     } catch (error) {
       session.engine.requeue(closed);
       session.stats.flushFailures++;
