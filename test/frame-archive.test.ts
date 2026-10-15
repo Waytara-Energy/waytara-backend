@@ -17,7 +17,7 @@ describe("the long-term message log", () => {
     await archive.flush();
     const keys = [...store.files.keys()];
     expect(keys).toHaveLength(1);
-    expect(keys[0]).toMatch(new RegExp(`^ocpp/v1/${EQ}/2026/10/15/103005-[0-9a-f]{4}-1\.ndjson\.gz$`));
+    expect(keys[0]).toMatch(/^ocpp\/v1\/ca7809ea-cfc9-4dd3-aeba-cd245a84e7ca\/2026\/10\/15\/103005-[0-9a-f]{4}-1\.ndjson\.gz$/);
     const text = gunzipSync(store.files.get(keys[0]!)!).toString("utf8");
     expect(text).not.toContain("CARD-9");
     const lines = text.trim().split("\n").map((l) => JSON.parse(l));
