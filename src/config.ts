@@ -49,6 +49,13 @@ const asMasterKey = z.string().transform((v, ctx) => {
   return buf;
 });
 
+/** The 32 character Cloudflare account id; the S3 endpoint address that contains it is accepted too (it is what the dashboard shows next to it). */
+const asR2AccountId = z
+  .string()
+  .transform((v) => v.trim())
+  .transform((v) => /^https?:\/\/([0-9a-f]{32})\.r2\.cloudflarestorage\.com\/?$/i.exec(v)?.[1] ?? v)
+  .pipe(z.string().regex(/^[0-9a-f]{32}$/i, "must be the 32 character account id (or the endpoint address that contains it)"));
+
 const DEFAULT_DEV_ORIGINS = "http://localhost:3000,http://localhost:3001,http://localhost:5173";
 
 const schema = z
@@ -70,7 +77,7 @@ const schema = z
     SUPABASE_SERVICE_USER_PASSWORD: z.string().min(8).max(512).optional(),
     KEY_ENCRYPTION_MASTER: asMasterKey.optional(),
     KEY_ENCRYPTION_MASTER_PREVIOUS: asMasterKey.optional(),
-    R2_ACCOUNT_ID: z.string().regex(/^[0-9a-f]{32}$/i, "must be the 32 character account id").optional(),
+    R2_ACCOUNT_ID: asR2AccountId.optional(),
     R2_ACCESS_KEY_ID: z.string().min(16).max(128).optional(),
     R2_SECRET_ACCESS_KEY: z.string().min(32).max(256).optional(),
     R2_BUCKET: z.string().regex(/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/, "must be a bucket name").optional(),

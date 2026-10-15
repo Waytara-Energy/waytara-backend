@@ -122,6 +122,12 @@ describe("settings for the file store", () => {
     expect(loadConfig(good).r2).toEqual({ accountId: good.R2_ACCOUNT_ID, accessKeyId: good.R2_ACCESS_KEY_ID, secretAccessKey: good.R2_SECRET_ACCESS_KEY, bucket: "waytara-cadence" });
   });
 
+  it("accept the endpoint address in place of the bare account id", () => {
+    const id = "a".repeat(32);
+    for (const v of [`https://${id}.r2.cloudflarestorage.com`, `https://${id}.r2.cloudflarestorage.com/`, ` ${id} `]) expect(loadConfig({ ...good, R2_ACCOUNT_ID: v }).r2?.accountId).toBe(id);
+    expect(() => loadConfig({ ...good, R2_ACCOUNT_ID: "https://example.com" })).toThrow(/32 character account id/);
+  });
+
   it("must all be set together, and are checked without echoing the secret", () => {
     expect(() => loadConfig({ R2_BUCKET: "waytara-cadence" })).toThrow(/must all be set together/);
     expect(() => loadConfig({ ...good, R2_ACCOUNT_ID: "short" })).toThrow(ConfigError);
