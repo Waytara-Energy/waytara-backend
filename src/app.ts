@@ -24,6 +24,7 @@ import { Readiness } from "./lib/readiness.js";
 import { buildLoggerOptions } from "./logger.js";
 import { registerSecurity, requestIdFrom } from "./plugins/security.js";
 import { registerHealthRoutes } from "./routes/health.js";
+import { registerSpeedtestRoutes } from "./routes/speedtest.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -77,6 +78,7 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
 
   await registerSecurity(app, config);
   await registerHealthRoutes(app, config, readiness);
+  await registerSpeedtestRoutes(app);
 
   const db = options.deps?.db ?? (config.supabase ? createSupabaseGatewayDb(config.supabase) : undefined);
   const verify = options.deps?.verify ?? (config.supabase ? createSupabaseTokenVerifier(config.supabase.url) : undefined);
