@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AppError, badRequest, notFound } from "../../lib/errors.js";
 import { clientIp } from "../../plugins/auth.js";
 import { registerWebSocket } from "../../plugins/websocket.js";
+import type { FrameLog } from "./frame-log.js";
 import type { OcppHub } from "./hub.js";
 import type { ChargerRegistry } from "./registry.js";
 import type { EvStore } from "./store.js";
@@ -25,6 +26,8 @@ export interface OcppRouteDeps {
   registry: ChargerRegistry;
   store: Pick<EvStore, "access" | "event">;
   log: { info(o: object, m: string): void; warn(o: object, m: string): void };
+  /** the recent messages of each charger, for staff */
+  frames?: FrameLog;
 }
 
 function basicAuth(header: string | undefined): { user: string; password: string } | null {
@@ -114,6 +117,14 @@ export async function registerOcppRoutes(app: FastifyInstance, d: OcppRouteDeps)
     await allowed(request, equipment);
     const c = d.hub.get(equipment);
     return { connected: !!c, charge_point_id: c?.info.chargePointId ?? null, last_message_at: c ? new Date(c.lastMessageAt).toISOString() : null };
+  });
+
+  // What the charger sent and what the server answered, newest last (staff only; card identifiers are hidden; empty after a restart).
+  app.get("/v1/ev/:equipment/frames", { ...signedIn, config: limited }, async (request) => {
+    const { equipment } = parse(id, request.params);
+    const { limit } = parse(z.object({ limit: z.coerce.number().int().min(1).max(300).default(100) }), request.query);
+    if ((await d.store.access(request.user!.id, equipment)) !== "staff") throw notFound();
+    return { frames: d.frames?.list(equipment, limit) ?? [] };
   });
 
   app.post("/v1/ev/:equipment/remote-start", { ...signedIn, config: limited }, async (request) => {

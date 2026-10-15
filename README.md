@@ -68,6 +68,7 @@ Commands need a sign-in as the charger's owner or site staff; the answer says wh
 | Call | Body |
 |---|---|
 | `GET /v1/ev/{equipment}/status` | connected or not, charger name, time of the last message |
+| `GET /v1/ev/{equipment}/frames?limit=100` | staff only: the last messages the charger sent and the server answered (card identifiers hidden; kept in memory, empty after a restart) |
 | `POST /v1/ev/{equipment}/remote-start` | `{connector_id?, id_tag?}` |
 | `POST /v1/ev/{equipment}/remote-stop` | `{transaction_id}` |
 | `POST /v1/ev/{equipment}/reset` | `{type: "Soft" or "Hard"}` |

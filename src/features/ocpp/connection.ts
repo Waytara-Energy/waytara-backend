@@ -29,8 +29,8 @@ export interface ConnDeps {
   store: EvStore;
   log: ConnLog;
   now?: () => number;
-  /** raw frames for the 30-day log (best effort) */
-  frameLog?: (chargePointId: string, direction: "in" | "out", raw: string) => void;
+  /** every frame, for the in-memory log staff can read (see frame-log.ts) */
+  frameLog?: (equipmentId: string, direction: "in" | "out", raw: string) => void;
   onClosed?: (c: OcppConnection) => void;
 }
 
@@ -168,7 +168,7 @@ export class OcppConnection {
   private send(frame: unknown[]): void {
     if (this.ws.readyState !== 1) return;
     const raw = JSON.stringify(frame);
-    this.d.frameLog?.(this.info.chargePointId, "out", raw);
+    this.d.frameLog?.(this.info.equipmentId, "out", raw);
     this.ws.send(raw);
   }
 
@@ -198,7 +198,7 @@ export class OcppConnection {
 
   private async onFrame(raw: string): Promise<void> {
     this.lastMessageAt = this.now();
-    this.d.frameLog?.(this.info.chargePointId, "in", raw);
+    this.d.frameLog?.(this.info.equipmentId, "in", raw);
     if (this.tooFast()) {
       this.d.log.warn({ equipmentId: this.info.equipmentId }, "charger sends too fast: closing");
       this.close(1008, "too many messages");

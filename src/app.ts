@@ -7,6 +7,7 @@ import { createSupabaseGatewayDb, SupabaseGatewayDb } from "./db/supabase-gatewa
 import { SupabaseIngestStore } from "./db/supabase-ingest-store.js";
 import { Broker } from "./features/broker/broker.js";
 import { KeyCache } from "./features/broker/key-cache.js";
+import { FrameLog } from "./features/ocpp/frame-log.js";
 import { OcppHub } from "./features/ocpp/hub.js";
 import { ChargerRegistry } from "./features/ocpp/registry.js";
 import { registerOcppRoutes } from "./features/ocpp/routes.js";
@@ -102,8 +103,9 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
     const evStore = options.deps?.evStore ?? (config.ocppEnabled && db instanceof SupabaseGatewayDb ? new SupabaseEvStore(db) : undefined);
     if (evStore) {
       const registry = new ChargerRegistry(evStore, vault, bus);
-      const hub = new OcppHub({ store: evStore, log: app.log });
-      await registerOcppRoutes(app, { hub, registry, store: evStore, log: app.log });
+      const frames = new FrameLog();
+      const hub = new OcppHub({ store: evStore, log: app.log, frameLog: (equipmentId, direction, raw) => frames.add(equipmentId, direction, raw) });
+      await registerOcppRoutes(app, { hub, registry, store: evStore, log: app.log, frames });
       bus.onChanged((equipmentId) => {
         const c = hub.get(equipmentId);
         if (c) void registry.isActive(c.info.keyId).then((ok) => ok || hub.kick(equipmentId)).catch(() => undefined);

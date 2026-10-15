@@ -16,8 +16,9 @@ const SECRET = "k3x9q2m7p4w8z1n5v6c0b2d4";
 const NAME = "WT_PZ_7k_1";
 const OWNER = "c1000000-0000-4000-8000-000000000001";
 const STRANGER = "c2000000-0000-4000-8000-000000000002";
+const STAFF = "c3000000-0000-4000-8000-000000000003";
 const vault = new KeyVault({ current: Buffer.alloc(32, 3) });
-const users: Record<string, AuthUser> = { "tok-owner": { id: OWNER, role: "authenticated" }, "tok-stranger": { id: STRANGER, role: "authenticated" } };
+const users: Record<string, AuthUser> = { "tok-owner": { id: OWNER, role: "authenticated" }, "tok-stranger": { id: STRANGER, role: "authenticated" }, "tok-staff": { id: STAFF, role: "authenticated" } };
 const verify: TokenVerifier = async (t) => {
   const u = users[t];
   if (!u) throw new TokenError("no");
@@ -36,6 +37,7 @@ beforeEach(async () => {
   ev = new FakeEvStore();
   ev.keys = [{ equipmentId: EQ, keyId: "kkkkkkkk-0000-4000-8000-000000000001", label: NAME, ciphertext: vault.encrypt(Buffer.from(SECRET, "utf8"), { equipmentId: EQ, kind: "charger" }), expiresAt: null }];
   ev.access_.set(`${OWNER}|${EQ}`, "owner");
+  ev.access_.set(`${STAFF}|${EQ}`, "staff");
   bus = new KeyChangeBus();
   const db = new FakeDb();
   app = await testApp({}, { db, verify, vault, store: new FakeStore(), evStore: ev, bus } as never);
@@ -413,6 +415,22 @@ describe("commands from people", () => {
     expect((await get()).json()).toMatchObject({ connected: false });
     await connect();
     expect((await get()).json()).toMatchObject({ connected: true, charge_point_id: NAME });
+  });
+
+  it("lets staff read what the charger sent, with card identifiers hidden, and nobody else", async () => {
+    const ws = await connect();
+    await call(ws, "Authorize", { idTag: "CARD-12345" });
+    const frames = (token: string) => app.inject({ method: "GET", url: `/v1/ev/${EQ}/frames`, headers: { authorization: `Bearer ${token}` } });
+    const r = await frames("tok-staff");
+    expect(r.statusCode).toBe(200);
+    const list = r.json().frames as { direction: string; frame: string }[];
+    expect(list.some((f) => f.direction === "in" && f.frame.includes("Authorize"))).toBe(true);
+    expect(list.some((f) => f.direction === "out")).toBe(true);
+    expect(JSON.stringify(list)).not.toContain("CARD-12345");
+    expect(JSON.stringify(list)).toContain("[hidden]");
+    expect((await frames("tok-owner")).statusCode).toBe(404);
+    expect((await frames("tok-stranger")).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: `/v1/ev/${EQ}/frames` })).statusCode).toBe(401);
   });
 
   it("answers 504 when the charger does not answer", async () => {
