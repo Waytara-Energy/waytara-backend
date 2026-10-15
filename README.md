@@ -1,6 +1,6 @@
 # waytara-backend
 
-The server behind the WayTara gateway: it receives data from the inverter gateways, decodes it, keeps the 28-day cadence history, writes the 15-minute summaries to Supabase, relays Go Live to the dashboard, sends settings to the inverter, and (later) acts as the OCPP central system for EV chargers.
+The server behind the WayTara gateway: it receives data from the inverter gateways, decodes it, keeps the 28-day cadence history, writes the 15-minute summaries to Supabase, relays Go Live to the dashboard, sends settings to the inverter (later), and acts as the OCPP central system for EV chargers.
 
 Design and decisions: `docs/GATEWAY_ARCHITECTURE_V2.md` in the dashboard repository (`D:\Manoj-Waytara\Projects`). This repository is built task by task (A2 to A11, then B1 to B6, section 20 of that plan).
 
@@ -13,8 +13,9 @@ Design and decisions: `docs/GATEWAY_ARCHITECTURE_V2.md` in the dashboard reposit
 | **A4a** sign-in checks, equipment keys, claim tickets, the database layer | done |
 | **A4b** built-in MQTT broker (`/mqtt`, WebSocket) and the data intake (sealed batches to 15-minute summaries, acknowledgements, register map) | done |
 | **A4c** storage in Supabase (`src/db/supabase-ingest-store.ts`), device status, broker on by default, simulated board | done, live |
-| **A5** cadence data in Cloudflare R2 (5-minute files, daily join), `GET /v1/reports/cadence` | built; live run with the real bucket pending |
-| A5 cadence storage and reports; A6 to A11 firmware, setup page, data path, write-back, dashboard, cut-over; Part B EV charger | later |
+| **A5** cadence data in Cloudflare R2 (5-minute files, daily join), `GET /v1/reports/cadence` | done, live |
+| **B2/B3** OCPP 1.6-J server, EV sessions with the solar / battery / grid split, remote commands | done, live with a simulated charger; the real charger is next |
+| A7 setup page, A9 settings write-back, A11 cut-over and over-the-air update | later |
 
 The core libraries (`src/core`) are plain functions with no network or database; the runtime is built from them.
 
@@ -55,6 +56,25 @@ An hour after start-up and then every hour, each finished day's files are joined
 | `GET /v1/reports/cadence?equipment=<id>&from=<time>&to=<time>&keys=a,b,c&format=csv` | same | decoded readings, one row per frame; `format=json` with `limit` for a preview. At most 7 days and 40 values per call, within the last 28 days. Times are ISO 8601 or epoch milliseconds |
 
 Staff (admins, and employees assigned to the site) can pick every value; a customer only those shown to customers, and only on a plan with the reports feature (`gw_cadence_access` decides). Anyone else gets the same "not found" as for equipment that does not exist. Settings: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` (all four or none; without them cadence data is not kept). Check them with `npm run check:r2`; look at what a live run wrote with `scripts/inspect-cadence.ts`.
+
+## EV chargers (OCPP 1.6-J)
+
+Chargers connect to `wss://hub.waytaraenergy.com/ocpp/<secret>/<charger name>` (or `/ocpp/<charger name>` with Basic authentication: user = name, password = secret). The secret is a charger key made on the admin **Device keys** page. An unknown address is refused with a plain 404 before any WebSocket starts; there is one connection per charger (a new one replaces the old only if the old no longer answers a ping); failed attempts per address are rate limited; the secret is redacted from every log line (`src/lib/redact.ts`).
+
+The server answers boot, heartbeat, status, authorise, start / stop transaction and meter values (kWh or Wh, kW or W, phases such as `L1-N`, converted by their units: `measurands.ts`) and stores every sample (`ev_session_samples`, kept 6 months). When a session ends, the summary is worked out from the stored samples, so a restart in the middle loses nothing: peak and average power, charging time, and where the energy came from. Solar comes first, then the battery, then the grid, from the inverter at the same site at each sample (`split.ts`), scaled so the three add up to the charger's own energy; the part with no inverter reading is "not known". A meter that goes backwards, or an impossible rate, marks the session `suspect` and keeps the figures as reported.
+
+Commands need a sign-in as the charger's owner or site staff; the answer says whether the charger accepted.
+
+| Call | Body |
+|---|---|
+| `GET /v1/ev/{equipment}/status` | connected or not, charger name, time of the last message |
+| `POST /v1/ev/{equipment}/remote-start` | `{connector_id?, id_tag?}` |
+| `POST /v1/ev/{equipment}/remote-stop` | `{transaction_id}` |
+| `POST /v1/ev/{equipment}/reset` | `{type: "Soft" or "Hard"}` |
+| `POST /v1/ev/{equipment}/unlock` | `{connector_id?}` |
+| `POST /v1/ev/{equipment}/trigger` | `{message: "MeterValues" or "StatusNotification" or "Heartbeat" or "BootNotification", connector_id?}` |
+
+Try it without the charger: `SIM_URL=wss://hub.waytaraenergy.com/ocpp/<secret>/<name> npx tsx scripts/simulate-charger.ts 90 10`.
 
 ## Run it
 
