@@ -28,6 +28,9 @@ const metricRow = z.object({
   show_for_user: z.boolean().nullable().optional(),
   poll_enabled: z.boolean().nullable().optional(),
   verified: z.boolean().nullable().optional(),
+  label: z.string().nullable().optional(),
+  unit: z.string().nullable().optional(),
+  category: z.string().nullable().optional(),
 });
 const profileDoc = z.object({
   upload_interval_s: z.number().int().min(60).max(3600),
@@ -71,9 +74,12 @@ export class SupabaseIngestStore implements IngestStore {
       pollEnabled: m.poll_enabled ?? false,
       verified: m.verified ?? false,
     }));
+    const labels: NonNullable<EquipmentProfile["labels"]> = {};
+    for (const m of p.metrics) if (m.direction === "read") labels[m.key] = { label: m.label ?? m.key, unit: m.unit ?? null, category: m.category ?? null };
     return {
       equipmentId,
       metrics,
+      labels,
       ...(p.mppt_count !== null ? { mpptCount: p.mppt_count } : {}),
       uploadIntervalS: p.upload_interval_s,
       unreadableRegisters: p.unreadable_registers,

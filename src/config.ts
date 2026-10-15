@@ -70,6 +70,10 @@ const schema = z
     SUPABASE_SERVICE_USER_PASSWORD: z.string().min(8).max(512).optional(),
     KEY_ENCRYPTION_MASTER: asMasterKey.optional(),
     KEY_ENCRYPTION_MASTER_PREVIOUS: asMasterKey.optional(),
+    R2_ACCOUNT_ID: z.string().regex(/^[0-9a-f]{32}$/i, "must be the 32 character account id").optional(),
+    R2_ACCESS_KEY_ID: z.string().min(16).max(128).optional(),
+    R2_SECRET_ACCESS_KEY: z.string().min(32).max(256).optional(),
+    R2_BUCKET: z.string().regex(/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/, "must be a bucket name").optional(),
     /** false switches the MQTT broker and the data intake off (the key and claim endpoints keep working) */
     GATEWAY_INGEST: asBoolean.default(true),
     APP_VERSION: z.string().min(1).max(64).optional(),
@@ -79,6 +83,10 @@ const schema = z
     const supabase = [env.SUPABASE_URL, env.SUPABASE_ANON_KEY, env.SUPABASE_SERVICE_USER_EMAIL, env.SUPABASE_SERVICE_USER_PASSWORD];
     if (supabase.some((v) => v !== undefined) && supabase.some((v) => v === undefined)) {
       ctx.addIssue({ code: "custom", path: ["SUPABASE_URL"], message: "SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_USER_EMAIL and SUPABASE_SERVICE_USER_PASSWORD must all be set together" });
+    }
+    const r2 = [env.R2_ACCOUNT_ID, env.R2_ACCESS_KEY_ID, env.R2_SECRET_ACCESS_KEY, env.R2_BUCKET];
+    if (r2.some((v) => v !== undefined) && r2.some((v) => v === undefined)) {
+      ctx.addIssue({ code: "custom", path: ["R2_ACCOUNT_ID"], message: "R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET must all be set together" });
     }
     if (env.NODE_ENV !== "production") return;
     for (const [name, value] of [
@@ -118,6 +126,8 @@ export interface Config {
   keyMasters?: { current: Buffer; previous?: Buffer };
   /** the MQTT broker and the data intake run (default); false is the off switch */
   gatewayIngest: boolean;
+  /** present when the file store (Cloudflare R2) is set; cadence data is kept and served only then */
+  r2?: { accountId: string; accessKeyId: string; secretAccessKey: string; bucket: string };
   version: string;
 }
 
@@ -158,6 +168,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       : {}),
     ...(e.KEY_ENCRYPTION_MASTER ? { keyMasters: { current: e.KEY_ENCRYPTION_MASTER, ...(e.KEY_ENCRYPTION_MASTER_PREVIOUS ? { previous: e.KEY_ENCRYPTION_MASTER_PREVIOUS } : {}) } } : {}),
     gatewayIngest: e.GATEWAY_INGEST,
+    ...(e.R2_ACCOUNT_ID && e.R2_ACCESS_KEY_ID && e.R2_SECRET_ACCESS_KEY && e.R2_BUCKET
+      ? { r2: { accountId: e.R2_ACCOUNT_ID, accessKeyId: e.R2_ACCESS_KEY_ID, secretAccessKey: e.R2_SECRET_ACCESS_KEY, bucket: e.R2_BUCKET } }
+      : {}),
     version: e.APP_VERSION ?? commit ?? "dev",
   };
 }

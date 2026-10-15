@@ -4,6 +4,7 @@ import { RollupEngine, bucketStartOf } from "../../core/rollup.js";
 import { ReplayGuard, SealError, openWithAnyKey, seal } from "../../core/seal.js";
 import { dnTopic, upTopic } from "../broker/topics.js";
 import type { KeyCache } from "../broker/key-cache.js";
+import type { CadenceWriter } from "../cadence/writer.js";
 import { dataBody, evtBody, hbBody, type DataBody } from "./schemas.js";
 import type { EquipmentProfile, IngestStore } from "./store.js";
 
@@ -28,6 +29,8 @@ export interface IngestDeps {
   publish: (equipmentId: string, topic: string, payload: Buffer, retain: boolean) => Promise<void>;
   log: IngestLog;
   now?: () => number;
+  /** keeps the raw readings in the file store (cadence data); when set, a frame is acknowledged only after it is stored there */
+  cadence?: Pick<CadenceWriter, "add" | "tick" | "durableBeforeMs">;
   /** called (best effort) when a sealed message does not authenticate */
   onRejected?: (equipmentId: string, reason: string) => void;
 }
@@ -214,6 +217,7 @@ export class IngestService {
         continue;
       }
       s.stats.frames++;
+      this.d.cadence?.add(s.equipmentId, [{ t: f.t, boot: body.boot, seq: f.seq, blocks: f.blocks }]);
 
       const words = new Map<number, number>();
       for (const [start, ws] of f.blocks) ws.forEach((w, i) => words.set(start + i, w));
@@ -305,7 +309,7 @@ export class IngestService {
   }
 
   private async publishAcks(s: Session): Promise<void> {
-    const cutoffMs = (s.flushedBoundary - ACK_LAG_S) * 1000;
+    const cutoffMs = Math.min((s.flushedBoundary - ACK_LAG_S) * 1000, this.d.cadence?.durableBeforeMs(s.equipmentId) ?? Infinity);
     for (const [boot, list] of s.pending) {
       let upTo = -1;
       let n = 0;
@@ -328,6 +332,7 @@ export class IngestService {
 
   /** Writes what is due. Called by the timer; tests call it directly. */
   async tick(nowMs: number): Promise<void> {
+    await this.d.cadence?.tick(nowMs).catch(() => undefined); // failures are logged by the writer and retried
     for (const s of this.sessions.values()) {
       if (nowMs >= s.nextFlushAt) await this.flush(s, nowMs);
     }
@@ -337,6 +342,7 @@ export class IngestService {
     const session = typeof s === "string" ? this.sessions.get(s) : s;
     if (!session) return;
     const nowS = nowMs / 1000;
+    await this.d.cadence?.tick(nowMs).catch(() => undefined);
     const closed = session.engine.collectClosed(nowS);
     const latest = [...session.latest].map(([key, v]) => ({ key, value: v.value, ts: v.ts }));
     try {

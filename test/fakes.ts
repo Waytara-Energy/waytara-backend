@@ -21,6 +21,8 @@ export class FakeDb implements GatewayDb {
   access = new Set<string>();
   /** `${actor}|${equipmentId}` */
   manage = new Set<string>();
+  /** `${actor}|${equipmentId}` -> what that person may read of the cadence data */
+  cadence = new Map<string, "staff" | "customer">();
   keys: FakeKey[] = [];
   tickets = new Map<string, { equipmentId: string; issuedTo: string; hardwareId: string; expires: number; used: boolean }>();
   devices = new Map<string, string>();
@@ -50,6 +52,11 @@ export class FakeDb implements GatewayDb {
   async actorCanManageKeys(actor: string, equipment: string): Promise<boolean> {
     this.check();
     return this.manage.has(`${actor}|${equipment}`);
+  }
+
+  async cadenceAccess(actor: string, equipment: string): Promise<"staff" | "customer" | null> {
+    this.check();
+    return this.cadence.get(`${actor}|${equipment}`) ?? null;
   }
 
   async equipmentInfo(equipment: string): Promise<EquipmentInfo | null> {

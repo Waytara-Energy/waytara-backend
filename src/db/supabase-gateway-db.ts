@@ -118,6 +118,11 @@ export class SupabaseGatewayDb implements GatewayDb {
     return (await this.call("gw_actor_can_manage_keys", { p_actor: actor, p_equipment: equipment })) === true;
   }
 
+  async cadenceAccess(actor: string, equipment: string): Promise<"staff" | "customer" | null> {
+    const v = await this.call("gw_cadence_access", { p_actor: actor, p_equipment: equipment });
+    return v === "staff" || v === "customer" ? v : null;
+  }
+
   async equipmentInfo(equipment: string): Promise<EquipmentInfo | null> {
     const row = this.rows(await this.call("gw_equipment_info", { p_equipment: equipment }))[0];
     if (!row) return null;

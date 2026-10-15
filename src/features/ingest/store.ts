@@ -5,6 +5,13 @@ import type { BucketStats, ClosedBucket } from "../../core/rollup.js";
  * What the data intake needs from storage. The Supabase implementation is db/supabase-ingest-store.ts; tests use an in-memory stand-in. Writes REPLACE: sending the same bucket again changes nothing, so a retry or a late reading is safe.
  */
 
+/** What a person calls a value: shown as the column title of a downloaded file. */
+export interface MetricLabel {
+  label: string;
+  unit: string | null;
+  category: string | null;
+}
+
 export interface EquipmentProfile {
   equipmentId: string;
   /** the catalogue rows of this equipment (equipment_metrics joined with the template) */
@@ -15,6 +22,8 @@ export interface EquipmentProfile {
   uploadIntervalS: number;
   /** registers the 10 Sep sweep found silent: a request is never extended across them */
   unreadableRegisters?: number[];
+  /** display name, unit and group of each value, by key */
+  labels?: Record<string, MetricLabel>;
 }
 
 export interface SummaryWrite {

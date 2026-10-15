@@ -7,6 +7,11 @@ import { createSupabaseGatewayDb, SupabaseGatewayDb } from "./db/supabase-gatewa
 import { SupabaseIngestStore } from "./db/supabase-ingest-store.js";
 import { Broker } from "./features/broker/broker.js";
 import { KeyCache } from "./features/broker/key-cache.js";
+import { CadenceArchive } from "./features/cadence/archive.js";
+import { startCadenceMaintenance } from "./features/cadence/maintenance.js";
+import { registerCadenceRoutes } from "./features/cadence/routes.js";
+import { CadenceWriter } from "./features/cadence/writer.js";
+import { R2ObjectStore, type ObjectStore } from "./storage/object-store.js";
 import { registerBrokerRoute } from "./features/broker/routes.js";
 import { IngestService } from "./features/ingest/service.js";
 import type { IngestStore } from "./features/ingest/store.js";
@@ -34,6 +39,10 @@ export interface Deps {
   vault: KeyVault;
   /** where decoded data goes; without it the board connection and data intake stay switched off */
   store: IngestStore;
+  /** where cadence files are kept; without it cadence data is not kept or served */
+  objectStore: ObjectStore;
+  /** the clock the report rules use (limits on how far back and how far ahead); tests fix it */
+  clock: () => number;
 }
 
 export interface BuildOptions {
@@ -79,6 +88,7 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
     readiness.register("database", () => db.ping());
 
     const store = options.deps?.store ?? (config.gatewayIngest && db instanceof SupabaseGatewayDb ? new SupabaseIngestStore(db) : undefined);
+    const objectStore = options.deps?.objectStore ?? (config.r2 ? new R2ObjectStore(config.r2) : undefined);
     if (store) {
       const keys = new KeyCache(db, vault);
       const throttle = new Map<string, number>();
@@ -99,9 +109,23 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
         onAuthFailed: (id, ip) => recordFailure(id, ip, "mqtt login"),
       });
       await broker.start();
+      const cadence = objectStore ? new CadenceWriter({ store: objectStore, log: app.log }) : undefined;
+      const archive = objectStore ? new CadenceArchive(objectStore, app.log) : undefined;
+      if (objectStore && archive && cadence) {
+        readiness.register("cadence_store", () => objectStore.ping());
+        await registerCadenceRoutes(app, { db, store, archive, ...(options.deps?.clock ? { now: options.deps.clock } : {}) });
+        const maintenance = startCadenceMaintenance(archive, app.log);
+        app.addHook("onClose", async () => {
+          maintenance.stop();
+          await cadence.flushAll(); // what is still in memory goes to the file store before we stop
+        });
+      } else {
+        app.log.warn("no file store is configured (R2_*): cadence data is not kept");
+      }
       const service = new IngestService({
         keys,
         store,
+        ...(cadence ? { cadence } : {}),
         publish: (id, topic, payload, retain) => broker.publish(id, topic, payload, { retain }),
         log: app.log,
         onRejected: (id, reason) => recordFailure(id, null, reason),

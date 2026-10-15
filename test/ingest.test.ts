@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { KeyVault } from "../src/core/key-vault.js";
 import { buildRegisterMap } from "../src/core/register-map.js";
 import { ReplayGuard, open, seal } from "../src/core/seal.js";
+import { decodePart, partKey } from "../src/core/cadence-part.js";
 import { KeyCache } from "../src/features/broker/key-cache.js";
+import { CadenceWriter } from "../src/features/cadence/writer.js";
+import { MemoryObjectStore } from "../src/storage/object-store.js";
 import { dnTopic, upTopic } from "../src/features/broker/topics.js";
 import { IngestService } from "../src/features/ingest/service.js";
 import { FakeDb } from "./fakes.js";
@@ -427,5 +430,83 @@ describe("heartbeat and register map", () => {
     expect(published).toHaveLength(0);
     await svc.handleUp(EQ, "evt", sealUp("evt", { type: "hello", map_ver: 0 }));
     expect(published).toHaveLength(1);
+  });
+});
+
+describe("cadence data is kept before the board is told", () => {
+  let objects: MemoryObjectStore;
+  let writer: CadenceWriter;
+  const mkWithCadence = () => {
+    objects = new MemoryObjectStore(() => nowMs);
+    writer = new CadenceWriter({ store: objects, log: { info: () => undefined, warn: () => undefined }, now: () => nowMs });
+    svc = new IngestService({
+      keys: new KeyCache(db, vault, 30_000, () => nowMs),
+      store,
+      cadence: writer,
+      publish: async (_id, topic, payload, retain) => {
+        published.push({ topic, payload, retain });
+      },
+      log: silent,
+      now: () => nowMs,
+      onRejected: (_id, reason) => rejected.push(reason),
+    });
+  };
+  const partRows = (start: number) => decodePart(objects.files.get(partKey(EQ, start * 1000))!);
+
+  it("stores the raw words of every frame in 5-minute files", async () => {
+    mkWithCadence();
+    await feed(7, S, S + 1500);
+    nowMs = (S + 900) * 1000 + 20_000;
+    await svc.tick(nowMs);
+    const rows = partRows(S);
+    expect(rows).toHaveLength(60);
+    expect(rows[0]).toMatchObject({ boot: 7, seq: 1, t: S * 1000 });
+    expect(rows[0]!.words.get(186)).toBe(100);
+    expect(rows[0]!.words.get(184)).toBe(80);
+    expect(partRows(S + 600)).toHaveLength(60);
+  });
+
+  it("does not store a frame twice, and drops frames with an impossible time", async () => {
+    mkWithCadence();
+    const frames = [frame(1, S + 10), frame(2, S + 15), frame(3, S - 40 * 3600)];
+    nowMs = (S + 100) * 1000;
+    await send(7, frames);
+    await send(7, frames);
+    await writer.flushAll();
+    expect(partRows(S)).toHaveLength(2);
+    expect([...objects.files.keys()]).toHaveLength(1);
+  });
+
+  it("tells the board a frame is stored only once its 5-minute file has been written", async () => {
+    mkWithCadence();
+    await feed(7, S, S + 1500);
+    nowMs = (S + 900) * 1000 + 3000; // summaries are written; the window ending at S+900 is still in its grace period
+    await svc.tick(nowMs);
+    // the summary rule alone would allow seq 156 (frames before S+780); the file store holds only what ended before S+600
+    expect(acksOf().map((a) => a.body)).toEqual([{ boot: 7, seq: 120 }]);
+  });
+
+  it("holds back every acknowledgement while the file store is down, and loses nothing", async () => {
+    mkWithCadence();
+    await feed(7, S, S + 1500);
+    objects.failNext = 1000;
+    nowMs = (S + 900) * 1000 + 3000;
+    await svc.tick(nowMs);
+    expect(acksOf()).toHaveLength(0);
+    expect(store.writes).toHaveLength(1); // the summaries do not wait for the file store
+    objects.failNext = 0;
+    await feed(7, S + 1500, S + 1800, 301);
+    nowMs = (S + 1800) * 1000 + 3000;
+    await svc.tick(nowMs);
+    expect(partRows(S)).toHaveLength(60);
+    expect(acksOf().length).toBeGreaterThan(0);
+    expect(acksOf().at(-1)!.body.seq).toBeGreaterThan(156);
+  });
+
+  it("works without a file store, as before", async () => {
+    await feed(7, S, S + 1500);
+    nowMs = (S + 900) * 1000 + 3000;
+    await svc.tick(nowMs);
+    expect(acksOf()[0]!.body).toEqual({ boot: 7, seq: 156 });
   });
 });

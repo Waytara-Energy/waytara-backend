@@ -48,6 +48,8 @@ export interface GatewayDb {
 
   actorCanAccessSite(actor: string, site: string): Promise<boolean>;
   actorCanManageKeys(actor: string, equipment: string): Promise<boolean>;
+  /** May this person read the cadence data of this equipment, and as whom: staff see every value, a customer only what customers see. null = no. */
+  cadenceAccess(actor: string, equipment: string): Promise<"staff" | "customer" | null>;
   equipmentInfo(equipment: string): Promise<EquipmentInfo | null>;
 
   keyInfo(key: string): Promise<KeyInfo | null>;

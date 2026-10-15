@@ -12,7 +12,8 @@ Design and decisions: `docs/GATEWAY_ARCHITECTURE_V2.md` in the dashboard reposit
 | **A3** core libraries: sealed messages, decode, 15-minute summaries, register map | done |
 | **A4a** sign-in checks, equipment keys, claim tickets, the database layer | done |
 | **A4b** built-in MQTT broker (`/mqtt`, WebSocket) and the data intake (sealed batches to 15-minute summaries, acknowledgements, register map) | done |
-| **A4c** storage in Supabase (`src/db/supabase-ingest-store.ts`), device status, broker on by default, simulated board | built; live end-to-end run pending |
+| **A4c** storage in Supabase (`src/db/supabase-ingest-store.ts`), device status, broker on by default, simulated board | done, live |
+| **A5** cadence data in Cloudflare R2 (5-minute files, daily join), `GET /v1/reports/cadence` | built; live run with the real bucket pending |
 | A5 cadence storage and reports; A6 to A11 firmware, setup page, data path, write-back, dashboard, cut-over; Part B EV charger | later |
 
 The core libraries (`src/core`) are plain functions with no network or database; the runtime is built from them.
@@ -41,6 +42,19 @@ Sealed batches become 15-minute summaries; a frame is acknowledged only once the
 Storage is `src/db/supabase-ingest-store.ts`, which calls `gw_equipment_profile`, `gw_store_map`, `gw_ingest_summaries` and `gw_report_heartbeat` (migration `20261015020000_gateway_ingest.sql` in the dashboard repository). The broker and the intake start by default whenever the database settings are present; `GATEWAY_INGEST=false` switches them off. A board's check-in is written every 10 s, and the database turns three missed check-ins into "offline".
 
 Try it without hardware: `SIM_URL=wss://hub.waytaraenergy.com/mqtt SIM_EQUIPMENT_ID=<id> SIM_KEY_FILE=<file with the key> npx tsx scripts/simulate-board.ts 240` (see the top of `scripts/simulate-board.ts`).
+
+## Cadence data (A5)
+
+Every frame a board sends is kept as it came: raw register words, in small gzipped CSV files per equipment and 5-minute window (UTC), `cadence/v1/<equipment id>/<yyyy>/<mm>/<dd>/<HHmm>.csv.gz`, in the R2 bucket. Words, not decoded values, so a wrong scale in the catalogue can be corrected and the history read correctly afterwards. A window is written when it has ended (plus 15 s); a late frame rewrites its window after joining it with what is already there, and after a restart the first write of a window reads the old file first. A board is told a frame is stored only after its file has been written, so nothing is lost if the backend restarts or the file store is down for a while (the board keeps what is not acknowledged).
+
+An hour after start-up and then every hour, each finished day's files are joined into `day.csv.gz`, so a week reads 7 files. Files older than 30 days are deleted by a lifecycle rule on the bucket (prefix `cadence/`); the backend itself refuses anything older than 28 days.
+
+| Call | Who | What |
+|---|---|---|
+| `GET /v1/reports/cadence/keys?equipment=<id>` | signed-in, with access | the values this person may pick, with names, units and groups |
+| `GET /v1/reports/cadence?equipment=<id>&from=<time>&to=<time>&keys=a,b,c&format=csv` | same | decoded readings, one row per frame; `format=json` with `limit` for a preview. At most 7 days and 40 values per call, within the last 28 days. Times are ISO 8601 or epoch milliseconds |
+
+Staff (admins, and employees assigned to the site) can pick every value; a customer only those shown to customers, and only on a plan with the reports feature (`gw_cadence_access` decides). Anyone else gets the same "not found" as for equipment that does not exist. Settings: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` (all four or none; without them cadence data is not kept). Check them with `npm run check:r2`; look at what a live run wrote with `scripts/inspect-cadence.ts`.
 
 ## Run it
 
@@ -90,6 +104,8 @@ src/
   db/                the one interface to the database (gw_* functions) and its Supabase implementation
   features/keys/     key and claim logic, key generation, the HTTP routes
   features/broker/   the MQTT broker (Aedes), topic rules, key cache, the /mqtt WebSocket route
+  features/cadence/  5-minute files (writer), reading and daily join (archive), decoding and CSV (report), the report routes
+  storage/object-store.ts  the file store (Cloudflare R2 over the S3 API) and an in-memory one for tests
   features/ingest/   sealed message intake: decode, summaries, acknowledgements, register map, heartbeat
   db/supabase-ingest-store.ts  the intake's storage (gw_* functions)
   lib/jwt.ts         sign-in token verification
@@ -105,7 +121,7 @@ src/
 test/                one file per area; no test needs the network
 test/fixtures/       the Waytara Office catalogue and a replayed afternoon of real readings
 test-vectors/        shared proofs that the firmware and this backend agree (seal.json, decode.json, claim.json, mqtt-login.json)
-scripts/             simulate-board.ts (a stand-in board), make-seal-vectors.ts, make-claim-vectors.ts, make-mqtt-login-vectors.ts (only when a format is changed on purpose); check-supabase.ts
+scripts/             simulate-board.ts (a stand-in board), check-r2.ts, inspect-cadence.ts, make-seal-vectors.ts, make-claim-vectors.ts, make-mqtt-login-vectors.ts (only when a format is changed on purpose); check-supabase.ts
 ```
 
 ## Conventions
