@@ -44,7 +44,7 @@ beforeEach(async () => {
   bus = new KeyChangeBus();
   files = new MemoryObjectStore();
   const db = new FakeDb();
-  app = await testApp({}, { db, verify, vault, store: new FakeStore(), evStore: ev, bus, objectStore: files } as never);
+  app = await testApp({}, { db, verify, vault, store: new FakeStore(), evStore: ev, bus, objectStore: files, ocppTimings: { orphanGraceMs: 150, cutoffRetryMs: 250 } } as never);
   await app.listen({ host: "127.0.0.1", port: 0 });
   port = (app.server.address() as AddressInfo).port;
 });
@@ -485,5 +485,134 @@ describe("a secret that changes", () => {
     bus.changed(OTHER);
     await expect(open(`/ocpp/${"o".repeat(24)}/${NAME}`)).rejects.toMatchObject({ status: 404 });
     expect((await open(`/ocpp/${"o".repeat(24)}/OTHER_CP`)).protocol).toBe("ocpp1.6");
+  });
+});
+
+// ---- the charger's own end of a charge, and a charge with a target
+
+describe("a charge that never gets its stop", () => {
+  const start = (ws: WebSocket, meterStart = 1000) => call(ws, "StartTransaction", { connectorId: 1, idTag: "T", meterStart, timestamp: iso(-60) });
+  const status = (ws: WebSocket, s: string) => call(ws, "StatusNotification", { connectorId: 1, status: s, errorCode: "NoError", timestamp: iso() });
+
+  it("closes the session when the connector goes Finishing and no stop comes, with the energy of the last reading", async () => {
+    const ws = await connect();
+    await start(ws, 1000);
+    await call(ws, "MeterValues", mv({ kwh: 1.5, kw: 3, ts: iso(-30) }));
+    await status(ws, "Finishing");
+    expect(await until(() => ev.sessions[0]!.endedAt !== null)).toBe(true);
+    const s = ev.sessions[0]!;
+    expect(s.summary?.status).toBe("aborted");
+    expect(s.reason).toBe("MissingStop");
+    expect(s.meterStopWh).toBe(1500);
+    expect(ev.events.some((e) => e.kind === "session_closed_without_stop")).toBe(true);
+  });
+
+  it("does not close it when the charger's stop arrives right behind the status", async () => {
+    const ws = await connect();
+    const tx = ((await start(ws, 1000))[2] as { transactionId: number }).transactionId;
+    await status(ws, "Finishing");
+    await call(ws, "StopTransaction", { transactionId: tx, meterStop: 2000, timestamp: iso(), reason: "Local" });
+    await wait(400);
+    expect(ev.sessions[0]!.reason).toBe("Local");
+    expect(ev.events.some((e) => e.kind === "session_closed_without_stop")).toBe(false);
+  });
+
+  it("leaves a running charge alone", async () => {
+    const ws = await connect();
+    await start(ws);
+    await status(ws, "Charging");
+    await wait(400);
+    expect(ev.sessions[0]!.endedAt).toBeNull();
+  });
+
+  it("closes the earlier session when a new charge begins on the same connector", async () => {
+    const ws = await connect();
+    await start(ws, 1000);
+    await start(ws, 3000);
+    expect(ev.sessions).toHaveLength(2);
+    expect(ev.sessions[0]!.reason).toBe("MissingStop");
+    expect(ev.sessions[1]!.endedAt).toBeNull();
+  });
+
+  it("picks the session up again when the charger reconnects, so readings still land on it", async () => {
+    const ws = await connect();
+    await start(ws, 1000);
+    ws.terminate();
+    await wait(300);
+    const again = await connect();
+    // a reading without a transaction id is placed on the connector's open session, which only works if it was picked up again
+    const noTx = mv({ kwh: 1.2, kw: 3 }) as { transactionId?: number };
+    delete noTx.transactionId;
+    await call(again, "MeterValues", noTx);
+    expect(ev.samples).toHaveLength(1);
+    expect(ev.sessions[0]!.endedAt).toBeNull();
+  });
+});
+
+describe("charging a number of units", () => {
+  const post = (path: string, body: object) => app.inject({ method: "POST", url: path, headers: { authorization: "Bearer tok-owner" }, payload: body });
+  const stopsAsked = (asked: { action: string; payload: unknown }[]) => asked.filter((a) => a.action === "RemoteStopTransaction");
+
+  it("stops the charge once the meter has delivered the target, and says so", async () => {
+    const ws = await connect();
+    const asked = answerServerCalls(ws);
+    const r = await post(`/v1/ev/${EQ}/remote-start`, { target_kwh: 1 });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ status: "Accepted", target_kwh: 1 });
+    const tx = ((await call(ws, "StartTransaction", { connectorId: 1, idTag: "T", meterStart: 10000, timestamp: iso(-60) }))[2] as { transactionId: number }).transactionId;
+    expect(ev.sessions[0]!.targetKwh).toBe(1);
+
+    await call(ws, "MeterValues", { ...mv({ kwh: 10.4 }), transactionId: tx });
+    await wait(100);
+    expect(stopsAsked(asked)).toHaveLength(0);
+    await call(ws, "MeterValues", { ...mv({ kwh: 11.0 }), transactionId: tx });
+    expect(await until(() => stopsAsked(asked).length === 1)).toBe(true);
+    expect(stopsAsked(asked)[0]!.payload).toEqual({ transactionId: tx });
+    expect(await until(() => ev.events.some((e) => e.kind === "target_stop_sent"))).toBe(true);
+    expect(ev.events.filter((e) => e.kind === "target_reached")).toHaveLength(1);
+
+    // more readings straight away do not ask again; after the retry time they do
+    await call(ws, "MeterValues", { ...mv({ kwh: 11.1 }), transactionId: tx });
+    await wait(50);
+    expect(stopsAsked(asked)).toHaveLength(1);
+    await wait(300);
+    await call(ws, "MeterValues", { ...mv({ kwh: 11.2 }), transactionId: tx });
+    expect(await until(() => stopsAsked(asked).length === 2)).toBe(true);
+  });
+
+  it("applies a target only to a charge started by that remote start", async () => {
+    const ws = await connect();
+    answerServerCalls(ws);
+    await call(ws, "StartTransaction", { connectorId: 1, idTag: "T", meterStart: 10000, timestamp: iso(-60) });
+    expect(ev.sessions[0]!.targetKwh ?? null).toBeNull();
+  });
+
+  it("forgets the target when the charger refuses the start", async () => {
+    const ws = await connect();
+    answerServerCalls(ws, () => ({ status: "Rejected" }));
+    const r = await post(`/v1/ev/${EQ}/remote-start`, { target_kwh: 2 });
+    expect(r.json().status).toBe("Rejected");
+    await call(ws, "StartTransaction", { connectorId: 1, idTag: "T", meterStart: 10000, timestamp: iso(-60) });
+    expect(ev.sessions[0]!.targetKwh ?? null).toBeNull();
+  });
+
+  it("keeps the target across a reconnect of the charger (it is stored with the session)", async () => {
+    const first = await connect();
+    answerServerCalls(first);
+    await post(`/v1/ev/${EQ}/remote-start`, { target_kwh: 1 });
+    const tx = ((await call(first, "StartTransaction", { connectorId: 1, idTag: "T", meterStart: 10000, timestamp: iso(-60) }))[2] as { transactionId: number }).transactionId;
+    first.terminate();
+    await wait(300);
+    const again = await connect();
+    const asked = answerServerCalls(again);
+    await call(again, "MeterValues", { ...mv({ kwh: 11.2 }), transactionId: tx });
+    expect(await until(() => stopsAsked(asked).length === 1)).toBe(true);
+  });
+
+  it("refuses targets that make no sense", async () => {
+    await connect();
+    expect((await post(`/v1/ev/${EQ}/remote-start`, { target_kwh: 0 })).statusCode).toBe(400);
+    expect((await post(`/v1/ev/${EQ}/remote-start`, { target_kwh: 5000 })).statusCode).toBe(400);
+    expect((await post(`/v1/ev/${EQ}/remote-start`, { target_kwh: "ten" })).statusCode).toBe(400);
   });
 });

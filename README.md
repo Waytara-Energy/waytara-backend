@@ -63,13 +63,16 @@ Chargers connect to `wss://hub.waytaraenergy.com/ocpp/<secret>/<charger name>` (
 
 The server answers boot, heartbeat, status, authorise, start / stop transaction and meter values (kWh or Wh, kW or W, phases such as `L1-N`, converted by their units: `measurands.ts`) and stores every sample (`ev_session_samples`, kept 6 months). When a session ends, the summary is worked out from the stored samples, so a restart in the middle loses nothing: peak and average power, charging time, and where the energy came from. Solar comes first, then the battery, then the grid, from the inverter at the same site at each sample (`split.ts`), scaled so the three add up to the charger's own energy; the part with no inverter reading is "not known". A meter that goes backwards, or an impossible rate, marks the session `suspect` and keeps the figures as reported.
 
+A charge whose stop never arrives (the connector says Available or Finishing 90 seconds later with the session still open, or a new charge starts on the same connector) is closed at its last reading with status `aborted` and reason `MissingStop`; if the charger's real stop turns up later it replaces those figures. Open sessions are picked up again from the database when the charger reconnects or the server restarts, so readings and a target survive both.
+
 Commands need a sign-in as the charger's owner or site staff; the answer says whether the charger accepted.
 
 | Call | Body |
 |---|---|
 | `GET /v1/ev/{equipment}/status` | connected or not, charger name, time of the last message |
 | `GET /v1/ev/{equipment}/frames?limit=100` | staff only: the last messages the charger sent and the server answered (card identifiers hidden; kept in memory, empty after a restart) |
-| `POST /v1/ev/{equipment}/remote-start` | `{connector_id?, id_tag?}` |
+| `GET /v1/ev/{equipment}/frames/archive?day=YYYY-MM-DD` | staff only: the long-term message log of one UTC day (JSON lines). Written to the file store every 10 minutes as `ocpp/v1/<equipment>/<yyyy>/<mm>/<dd>/…ndjson.gz`, kept 90 days |
+| `POST /v1/ev/{equipment}/remote-start` | `{connector_id?, id_tag?, target_kwh?}`; with `target_kwh` the server stops the charge by itself once the meter has delivered that many units (asks again after a minute, up to five times) |
 | `POST /v1/ev/{equipment}/remote-stop` | `{transaction_id}` |
 | `POST /v1/ev/{equipment}/reset` | `{type: "Soft" or "Hard"}` |
 | `POST /v1/ev/{equipment}/unlock` | `{connector_id?}` |

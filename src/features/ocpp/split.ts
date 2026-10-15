@@ -52,10 +52,12 @@ export interface StoredSample {
   solar_w: number | null;
   battery_w: number | null;
   grid_w: number | null;
+  /** the charger's own energy reading at that moment, if it reported one */
+  energy_kwh?: number | null;
 }
 
 export interface SessionSummary {
-  status: "completed" | "suspect";
+  status: "completed" | "suspect" | "aborted";
   peak_power_kw: number | null;
   avg_power_kw: number | null;
   max_current_a: number | null;

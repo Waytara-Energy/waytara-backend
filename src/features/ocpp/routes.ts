@@ -151,8 +151,27 @@ export async function registerOcppRoutes(app: FastifyInstance, d: OcppRouteDeps)
 
   app.post("/v1/ev/:equipment/remote-start", { ...signedIn, config: limited }, async (request) => {
     const { equipment } = parse(id, request.params);
-    const b = parse(z.object({ connector_id: z.number().int().min(1).max(8).default(1), id_tag: z.string().min(1).max(20).default("WAYTARA") }), request.body);
-    return command(request, equipment, "remote-start", "RemoteStartTransaction", { connectorId: b.connector_id, idTag: b.id_tag });
+    const b = parse(
+      z.object({
+        connector_id: z.number().int().min(1).max(8).default(1),
+        id_tag: z.string().min(1).max(20).default("WAYTARA"),
+        /** charge this many units (kWh), then stop by itself */
+        target_kwh: z.number().positive().max(1000).optional(),
+      }),
+      request.body,
+    );
+    await allowed(request, equipment);
+    const conn = d.hub.get(equipment);
+    // the target is noted before the command goes out: the charger may begin the charge before its answer reaches us
+    if (conn && b.target_kwh !== undefined) conn.setPendingTarget(b.connector_id, b.target_kwh);
+    try {
+      const r = await command(request, equipment, "remote-start", "RemoteStartTransaction", { connectorId: b.connector_id, idTag: b.id_tag });
+      if (conn && r.status !== "Accepted") conn.clearPendingTarget(b.connector_id);
+      return { ...r, ...(b.target_kwh !== undefined ? { target_kwh: b.target_kwh } : {}) };
+    } catch (error) {
+      conn?.clearPendingTarget(b.connector_id);
+      throw error;
+    }
   });
 
   app.post("/v1/ev/:equipment/remote-stop", { ...signedIn, config: limited }, async (request) => {

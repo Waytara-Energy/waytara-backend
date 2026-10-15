@@ -1,4 +1,4 @@
-import type { ChargerKeyRow, EvStore, SessionRef } from "../src/features/ocpp/store.js";
+import type { ActiveSession, ChargerKeyRow, EvStore, SessionRef } from "../src/features/ocpp/store.js";
 import type { SessionSummary, SiteFigures, StoredSample } from "../src/features/ocpp/split.js";
 
 export interface FakeSession {
@@ -14,6 +14,7 @@ export interface FakeSession {
   meterStopWh: number | null;
   reason: string | null;
   summary: SessionSummary | null;
+  targetKwh?: number | null;
 }
 
 /** An in-memory stand-in for the gw_ev_* functions. */
@@ -55,6 +56,18 @@ export class FakeEvStore implements EvStore {
     const s = this.sessions.find((x) => x.equipmentId === equipmentId && x.transactionId === transactionId);
     return s ? { id: s.id, startedAt: s.startedAt, endedAt: s.endedAt, meterStartWh: s.meterStartWh, status: s.endedAt ? "completed" : "active" } : null;
   }
+  async sessionSetTarget(sessionId: string, targetKwh: number | null) {
+    this.check();
+    const s = this.sessions.find((x) => x.id === sessionId);
+    if (!s) throw new Error("unknown session");
+    s.targetKwh = targetKwh;
+  }
+  async activeSessions(equipmentId: string): Promise<ActiveSession[]> {
+    this.check();
+    return this.sessions
+      .filter((s) => s.equipmentId === equipmentId && s.endedAt === null)
+      .map((s) => ({ id: s.id, transactionId: s.transactionId, connector: s.connector, startedAt: s.startedAt, meterStartWh: s.meterStartWh, targetKwh: s.targetKwh ?? null }));
+  }
   async sample(sessionId: string, ts: string, sample: Record<string, unknown>) {
     this.check();
     const i = this.samples.findIndex((x) => x.sessionId === sessionId && x.ts === ts);
@@ -74,6 +87,7 @@ export class FakeEvStore implements EvStore {
           solar_w: s.ev_from_solar_w ?? null,
           battery_w: s.ev_from_battery_w ?? null,
           grid_w: s.ev_from_grid_w ?? null,
+          energy_kwh: s.energy_kwh ?? null,
         };
       });
   }

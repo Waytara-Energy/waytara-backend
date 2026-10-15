@@ -22,11 +22,25 @@ export interface SessionRef {
   status: string;
 }
 
+/** A session that has not ended, as the server needs it to carry on after a restart or a reconnect. */
+export interface ActiveSession {
+  id: string;
+  transactionId: number;
+  connector: number;
+  startedAt: string;
+  meterStartWh: number | null;
+  targetKwh: number | null;
+}
+
 export interface EvStore {
   chargerKeys(): Promise<ChargerKeyRow[]>;
   nextTransaction(): Promise<number>;
   sessionStart(a: { equipmentId: string; connector: number; transactionId: number; startedAt: string; meterStartWh: number; idTagHash: string; chargePoint: string }): Promise<string>;
   sessionByTransaction(equipmentId: string, transactionId: number): Promise<SessionRef | null>;
+  /** the energy asked for at the start; null clears it */
+  sessionSetTarget(sessionId: string, targetKwh: number | null): Promise<void>;
+  /** the sessions of this charger that have not ended, oldest first */
+  activeSessions(equipmentId: string): Promise<ActiveSession[]>;
   sample(sessionId: string, ts: string, sample: Record<string, unknown>): Promise<void>;
   sessionSamples(sessionId: string): Promise<StoredSample[]>;
   sessionStop(sessionId: string, endedAt: string, meterStopWh: number, reason: string, summary: SessionSummary): Promise<void>;

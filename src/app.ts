@@ -55,6 +55,8 @@ export interface Deps {
   bus: KeyChangeBus;
   /** the clock the report rules use (limits on how far back and how far ahead); tests fix it */
   clock: () => number;
+  /** timings of the charger connections that tests shorten */
+  ocppTimings: { orphanGraceMs?: number; cutoffRetryMs?: number };
 }
 
 export interface BuildOptions {
@@ -112,6 +114,7 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
       const hub = new OcppHub({
         store: evStore,
         log: app.log,
+        ...(options.deps?.ocppTimings ?? {}),
         frameLog: (equipmentId, direction, raw) => {
           frames.add(equipmentId, direction, raw);
           archive?.add(equipmentId, direction, raw);

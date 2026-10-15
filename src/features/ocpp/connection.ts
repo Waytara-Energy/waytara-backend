@@ -32,7 +32,27 @@ export interface ConnDeps {
   /** every frame, for the in-memory log staff can read (see frame-log.ts) */
   frameLog?: (equipmentId: string, direction: "in" | "out", raw: string) => void;
   onClosed?: (c: OcppConnection) => void;
+  /** how long a connector may say Available / Finishing while a session is still open before the session is closed (default 90 s) */
+  orphanGraceMs?: number;
+  /** how long to wait before asking again to stop a charge that went past its target (default 60 s) */
+  cutoffRetryMs?: number;
 }
+
+/** A session that is running on a connector. */
+interface OpenSession {
+  transactionId: number;
+  sessionId: string;
+  meterStartWh: number | null;
+  /** the energy asked for (kWh); the charge is stopped when the meter has delivered this much */
+  targetKwh: number | null;
+  cutoffAttempts: number;
+  cutoffLastAt: number;
+}
+
+const MAX_CUTOFF_ATTEMPTS = 5;
+const PENDING_TARGET_MS = 5 * 60_000;
+/** the connector states in which no charge can still be running */
+const IDLE_STATES = new Set(["Available", "Finishing"]);
 
 export const HEARTBEAT_INTERVAL_S = 30;
 export const METER_INTERVAL_S = 30;
@@ -74,9 +94,12 @@ export class OcppConnection {
   private closed = false;
   private figures: { at: number; value: (SiteFigures & { age_s: number }) | null } | null = null;
   /** connector -> the transaction running on it, for MeterValues that do not carry a transaction id */
-  private open = new Map<number, { transactionId: number; sessionId: string }>();
+  private open = new Map<number, OpenSession>();
   private sessionIds = new Map<number, string>();
   private lastStatus = new Map<number, string>();
+  /** a target asked for with a remote start, waiting for the charge to begin on that connector */
+  private pendingTargets = new Map<number, { kwh: number; at: number }>();
+  private orphanTimers = new Map<number, NodeJS.Timeout>();
 
   constructor(
     private readonly d: ConnDeps,
@@ -87,7 +110,36 @@ export class OcppConnection {
     this.connectedAt = this.lastMessageAt = this.now();
   }
 
+  /** A target (kWh) to apply to the charge that begins next on this connector (a remote start with "charge this many units"). */
+  setPendingTarget(connector: number, kwh: number): void {
+    this.pendingTargets.set(connector, { kwh, at: this.now() });
+  }
+
+  clearPendingTarget(connector: number): void {
+    this.pendingTargets.delete(connector);
+  }
+
+  /** The sessions that were running before this connection (a restart of the server, or the charger reconnecting) are picked up again. */
+  private async restore(): Promise<void> {
+    try {
+      const active = await this.d.store.activeSessions(this.info.equipmentId);
+      const newest = new Map<number, (typeof active)[number]>();
+      for (const a of active) {
+        const prev = newest.get(a.connector);
+        if (prev) await this.closeOrphan(a.connector, { transactionId: prev.transactionId, sessionId: prev.id, meterStartWh: prev.meterStartWh, targetKwh: null, cutoffAttempts: 0, cutoffLastAt: 0 }, "superseded");
+        newest.set(a.connector, a);
+      }
+      for (const [connector, a] of newest) {
+        this.open.set(connector, { transactionId: a.transactionId, sessionId: a.id, meterStartWh: a.meterStartWh, targetKwh: a.targetKwh, cutoffAttempts: 0, cutoffLastAt: 0 });
+        this.sessionIds.set(a.transactionId, a.id);
+      }
+    } catch (error) {
+      this.d.log.warn({ equipmentId: this.info.equipmentId, err: error instanceof Error ? error.message : String(error) }, "could not pick up the open sessions");
+    }
+  }
+
   start(): void {
+    this.queue = this.queue.then(() => this.restore());
     this.ws.on("message", (data) => {
       const raw = typeof data === "string" ? data : Buffer.isBuffer(data) ? data.toString("utf8") : Buffer.concat(data as Buffer[]).toString("utf8");
       this.queue = this.queue.then(() => this.onFrame(raw)).catch((error) => this.d.log.warn({ equipmentId: this.info.equipmentId, err: error instanceof Error ? error.message : String(error) }, "ocpp frame failed"));
@@ -154,6 +206,8 @@ export class OcppConnection {
     this.closed = true;
     if (this.pingTimer) clearInterval(this.pingTimer);
     if (this.pongTimer) clearTimeout(this.pongTimer);
+    for (const t of this.orphanTimers.values()) clearTimeout(t);
+    this.orphanTimers.clear();
     for (const p of this.pending.values()) {
       clearTimeout(p.timer);
       p.reject(new Error("the charger disconnected"));
@@ -318,6 +372,7 @@ export class OcppConnection {
           this.lastStatus.set(s.connectorId, key);
           await this.record("status", { connector: s.connectorId, status: s.status, error: s.errorCode, info: s.info || undefined, at: this.when(s.timestamp, "status") });
         }
+        this.watchForMissingStop(s.connectorId, s.status);
         return {};
       }
 
@@ -330,6 +385,9 @@ export class OcppConnection {
       case "StartTransaction": {
         const s = p as { connectorId: number; idTag: string; meterStart: number; timestamp: string };
         await this.touch();
+        // a new charge on a connector means the one before it is over, whether or not its stop ever arrived
+        const before = this.open.get(s.connectorId);
+        if (before) await this.closeOrphan(s.connectorId, before, "superseded");
         const transactionId = await this.d.store.nextTransaction();
         const sessionId = await this.d.store.sessionStart({
           equipmentId: this.info.equipmentId,
@@ -340,9 +398,20 @@ export class OcppConnection {
           idTagHash: hashTag(s.idTag),
           chargePoint: this.info.chargePointId,
         });
-        this.open.set(s.connectorId, { transactionId, sessionId });
+        let targetKwh: number | null = null;
+        const wanted = this.pendingTargets.get(s.connectorId);
+        this.pendingTargets.delete(s.connectorId);
+        if (wanted && this.now() - wanted.at <= PENDING_TARGET_MS) {
+          try {
+            await this.d.store.sessionSetTarget(sessionId, wanted.kwh);
+            targetKwh = wanted.kwh;
+          } catch (error) {
+            this.d.log.warn({ equipmentId: this.info.equipmentId, err: error instanceof Error ? error.message : String(error) }, "could not store the target of a session");
+          }
+        }
+        this.open.set(s.connectorId, { transactionId, sessionId, meterStartWh: s.meterStart, targetKwh, cutoffAttempts: 0, cutoffLastAt: 0 });
         this.sessionIds.set(transactionId, sessionId);
-        await this.record("transaction_start", { connector: s.connectorId, transaction: transactionId, meter_start_wh: s.meterStart }, sessionId);
+        await this.record("transaction_start", { connector: s.connectorId, transaction: transactionId, meter_start_wh: s.meterStart, ...(targetKwh !== null ? { target_kwh: targetKwh } : {}) }, sessionId);
         return { transactionId, idTagInfo: { status: "Accepted" } };
       }
 
@@ -352,6 +421,7 @@ export class OcppConnection {
         const sessionId = await this.sessionFor(m.connectorId, m.transactionId);
         if (!sessionId) return {}; // meter values outside a transaction are not stored
         for (const entry of m.meterValue) await this.storeSample(sessionId, entry);
+        this.checkTarget(m.connectorId, m.transactionId, m.meterValue);
         return {};
       }
 
@@ -359,7 +429,12 @@ export class OcppConnection {
         const s = p as { meterStop: number; timestamp: string; transactionId: number; reason?: string };
         await this.touch();
         const sessionId = await this.sessionFor(null, s.transactionId);
-        for (const [c, o] of this.open) if (o.transactionId === s.transactionId) this.open.delete(c);
+        for (const [c, o] of this.open) {
+          if (o.transactionId === s.transactionId) {
+            this.open.delete(c);
+            this.clearOrphanTimer(c);
+          }
+        }
         this.sessionIds.delete(s.transactionId);
         if (!sessionId) {
           await this.record("stop_without_session", { transaction: s.transactionId });
@@ -387,6 +462,85 @@ export class OcppConnection {
         await this.record(action === "DiagnosticsStatusNotification" ? "diagnostics_status" : "firmware_status", { status: (p as { status: string }).status });
         return {};
     }
+  }
+
+  // ---- a charge that ended without a stop, and a charge that reached its target
+
+  private clearOrphanTimer(connector: number): void {
+    const t = this.orphanTimers.get(connector);
+    if (t) clearTimeout(t);
+    this.orphanTimers.delete(connector);
+  }
+
+  /**
+   * A connector that says Available or Finishing cannot still be charging. The charger normally sends its stop first (then this finds
+   * nothing open); if it does not, the session is closed after a short wait (the stop may be just behind the status).
+   */
+  private watchForMissingStop(connector: number, status: string): void {
+    if (connector < 1) return;
+    if (!IDLE_STATES.has(status)) {
+      this.clearOrphanTimer(connector);
+      return;
+    }
+    const session = this.open.get(connector);
+    if (!session || this.orphanTimers.has(connector)) return;
+    const timer = setTimeout(() => {
+      this.orphanTimers.delete(connector);
+      // through the same queue as the messages, so it cannot interleave with a stop that has just arrived
+      this.queue = this.queue.then(async () => {
+        const still = this.open.get(connector);
+        if (still && still.transactionId === session.transactionId) await this.closeOrphan(connector, still, `connector ${status}`);
+      }).catch((error) => this.d.log.warn({ equipmentId: this.info.equipmentId, err: error instanceof Error ? error.message : String(error) }, "could not close a session without a stop"));
+    }, this.d.orphanGraceMs ?? 90_000);
+    timer.unref();
+    this.orphanTimers.set(connector, timer);
+  }
+
+  /**
+   * Closes a session whose stop never came: it ends at its last sample, with the energy of that sample (or none), status "aborted".
+   * If the charger's real stop turns up later it replaces these figures.
+   */
+  private async closeOrphan(connector: number, o: OpenSession, why: string): Promise<void> {
+    this.open.delete(connector);
+    this.sessionIds.delete(o.transactionId);
+    this.clearOrphanTimer(connector);
+    try {
+      const samples = await this.d.store.sessionSamples(o.sessionId);
+      const last = [...samples].sort((a, b) => a.ts - b.ts).at(-1);
+      const ref = await this.d.store.sessionByTransaction(this.info.equipmentId, o.transactionId);
+      const meterStart = o.meterStartWh ?? ref?.meterStartWh ?? 0;
+      const lastWh = last?.energy_kwh != null ? Math.round(last.energy_kwh * 1000) : null;
+      const meterStop = lastWh !== null && lastWh >= meterStart ? lastWh : meterStart;
+      const startedAt = ref?.startedAt ?? new Date(this.now()).toISOString();
+      const endedAt = last ? new Date(last.ts * 1000).toISOString() : new Date(this.now()).toISOString();
+      const summary = summarize(samples, meterStart, meterStop, Date.parse(startedAt) / 1000, Date.parse(endedAt) / 1000);
+      if (summary.status === "completed") summary.status = "aborted";
+      await this.d.store.sessionStop(o.sessionId, endedAt, meterStop, "MissingStop", summary);
+      await this.record("session_closed_without_stop", { transaction: o.transactionId, why, energy_kwh: Math.round(meterStop - meterStart) / 1000 }, o.sessionId);
+    } catch (error) {
+      this.d.log.warn({ equipmentId: this.info.equipmentId, err: error instanceof Error ? error.message : String(error) }, "could not close a session without a stop");
+    }
+  }
+
+  /** When the meter has delivered the energy asked for, ask the charger to stop (again after a minute, up to five times). */
+  private checkTarget(connector: number, transactionId: number | undefined, entries: readonly MeterValueEntry[]): void {
+    const o = transactionId !== undefined ? [...this.open.values()].find((x) => x.transactionId === transactionId) : this.open.get(connector);
+    if (!o || o.targetKwh === null || o.meterStartWh === null) return;
+    let energyKwh: number | undefined;
+    for (const e of entries) energyKwh = normalizeSample(e.sampledValue).energy_kwh ?? energyKwh;
+    if (energyKwh === undefined) return;
+    const consumed = energyKwh - o.meterStartWh / 1000;
+    if (consumed < o.targetKwh - 1e-9) return;
+    const now = this.now();
+    if (o.cutoffAttempts >= MAX_CUTOFF_ATTEMPTS || (o.cutoffAttempts > 0 && now - o.cutoffLastAt < (this.d.cutoffRetryMs ?? 60_000))) return;
+    o.cutoffAttempts++;
+    o.cutoffLastAt = now;
+    if (o.cutoffAttempts === 1) void this.record("target_reached", { transaction: o.transactionId, target_kwh: o.targetKwh, delivered_kwh: Math.round(consumed * 1000) / 1000 }, o.sessionId);
+    // not awaited: the charger's answer arrives through the same queue as this message
+    void this.call("RemoteStopTransaction", { transactionId: o.transactionId }).then(
+      (r) => this.record("target_stop_sent", { transaction: o.transactionId, attempt: o.cutoffAttempts, status: (r as { status?: string })?.status ?? "unknown" }, o.sessionId),
+      (e: unknown) => this.record("target_stop_failed", { transaction: o.transactionId, attempt: o.cutoffAttempts, error: e instanceof Error ? e.message.slice(0, 120) : "unknown" }, o.sessionId),
+    );
   }
 
   private async sessionFor(connector: number | null, transactionId: number | undefined): Promise<string | null> {

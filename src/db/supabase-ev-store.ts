@@ -1,6 +1,6 @@
 import { DbError } from "./gateway-db.js";
 import type { RpcCaller } from "./supabase-ingest-store.js";
-import type { ChargerKeyRow, EvStore, SessionRef } from "../features/ocpp/store.js";
+import type { ActiveSession, ChargerKeyRow, EvStore, SessionRef } from "../features/ocpp/store.js";
 import type { SessionSummary, SiteFigures, StoredSample } from "../features/ocpp/split.js";
 
 /** The OCPP server's storage: the gw_ev_* functions of migration 20261016000000_ev_ocpp.sql, called as the backend's service user. */
@@ -60,6 +60,20 @@ export class SupabaseEvStore implements EvStore {
     };
   }
 
+  async sessionSetTarget(sessionId: string, targetKwh: number | null): Promise<void> {
+    await this.db.call("gw_ev_session_set_target", { p_session: sessionId, p_target_kwh: targetKwh });
+  }
+
+  async activeSessions(equipmentId: string): Promise<ActiveSession[]> {
+    const data = await this.db.call("gw_ev_active_sessions", { p_equipment: equipmentId });
+    return rows(data).flatMap((r) => {
+      const transactionId = numOrNull(r.transaction);
+      const connector = numOrNull(r.connector);
+      if (typeof r.id !== "string" || transactionId === null || connector === null) return [];
+      return [{ id: r.id, transactionId, connector, startedAt: String(r.started_at), meterStartWh: numOrNull(r.meter_start_wh), targetKwh: numOrNull(r.target_kwh) }];
+    });
+  }
+
   async sample(sessionId: string, ts: string, sample: Record<string, unknown>): Promise<void> {
     await this.db.call("gw_ev_sample", { p_session: sessionId, p_ts: ts, p_sample: sample });
   }
@@ -74,6 +88,7 @@ export class SupabaseEvStore implements EvStore {
       solar_w: numOrNull(r.solar_w),
       battery_w: numOrNull(r.battery_w),
       grid_w: numOrNull(r.grid_w),
+      energy_kwh: numOrNull(r.energy_kwh),
     }));
   }
 
