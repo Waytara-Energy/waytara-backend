@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConfigError, loadConfig } from "../src/config.js";
+import { PRODUCTION } from "./helpers.js";
 
 describe("loadConfig", () => {
   it("fills in safe defaults", () => {
@@ -48,9 +49,9 @@ describe("loadConfig", () => {
   });
 
   it("requires https websites in production", () => {
-    expect(() => loadConfig({ NODE_ENV: "production", ALLOWED_ORIGINS: "http://a.example.com" })).toThrow(/https/);
-    expect(() => loadConfig({ NODE_ENV: "production", ALLOWED_ORIGINS: "" })).toThrow(/at least one/);
-    expect(loadConfig({ NODE_ENV: "production", ALLOWED_ORIGINS: "https://a.example.com" }).env).toBe("production");
+    expect(() => loadConfig({ ...PRODUCTION, ALLOWED_ORIGINS: "http://a.example.com" })).toThrow(/https/);
+    expect(() => loadConfig({ ...PRODUCTION, ALLOWED_ORIGINS: "" })).toThrow(/at least one/);
+    expect(loadConfig({ ...PRODUCTION, ALLOWED_ORIGINS: "https://a.example.com" }).env).toBe("production");
   });
 
   it("never puts a value into the error message", () => {
@@ -61,5 +62,55 @@ describe("loadConfig", () => {
     } catch (e) {
       expect((e as Error).message).not.toContain(secretish);
     }
+  });
+
+  describe("database and key settings", () => {
+    it("are optional outside production and then switch the key features off", () => {
+      const c = loadConfig({});
+      expect(c.supabase).toBeUndefined();
+      expect(c.keyMasters).toBeUndefined();
+    });
+
+    it("are all required in production, and the error names each missing one", () => {
+      try {
+        loadConfig({ NODE_ENV: "production", ALLOWED_ORIGINS: "https://a.example.com" });
+        throw new Error("should have thrown");
+      } catch (e) {
+        const text = (e as ConfigError).problems.join(" | ");
+        for (const name of ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_USER_EMAIL", "SUPABASE_SERVICE_USER_PASSWORD", "KEY_ENCRYPTION_MASTER"]) expect(text).toContain(name);
+      }
+    });
+
+    it("must be given together or not at all", () => {
+      expect(() => loadConfig({ SUPABASE_URL: "https://project.example.supabase.co" })).toThrow(/must all be set together/);
+    });
+
+    it("are read into one object each", () => {
+      const c = loadConfig({ ...PRODUCTION, ALLOWED_ORIGINS: "https://a.example.com", KEY_ENCRYPTION_MASTER_PREVIOUS: Buffer.alloc(32, 6).toString("base64") });
+      expect(c.supabase).toEqual({ url: "https://project.example.supabase.co", anonKey: "anon-key-anon-key-anon-key", serviceEmail: "backend@example.com", servicePassword: "a-long-password-from-a-manager" });
+      expect(c.keyMasters?.current.equals(Buffer.alloc(32, 5))).toBe(true);
+      expect(c.keyMasters?.previous?.equals(Buffer.alloc(32, 6))).toBe(true);
+    });
+
+    it("refuse a master key that is not 32 bytes of base64, without printing it", () => {
+      for (const bad of ["too-short", Buffer.alloc(16).toString("base64"), Buffer.alloc(32, 1).toString("base64") + "x"]) {
+        try {
+          loadConfig({ KEY_ENCRYPTION_MASTER: bad });
+          throw new Error("should have thrown");
+        } catch (e) {
+          expect((e as Error).message).toMatch(/KEY_ENCRYPTION_MASTER/);
+          expect((e as Error).message).not.toContain(bad);
+        }
+      }
+    });
+
+    it("never put the password in an error message", () => {
+      try {
+        loadConfig({ SUPABASE_SERVICE_USER_PASSWORD: "x" });
+        throw new Error("should have thrown");
+      } catch (e) {
+        expect((e as Error).message).not.toContain("SUPABASE_SERVICE_USER_PASSWORD: x");
+      }
+    });
   });
 });

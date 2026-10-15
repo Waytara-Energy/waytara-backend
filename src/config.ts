@@ -39,6 +39,16 @@ const asOriginList = z
     }
   });
 
+/** 32 random bytes written as base64 (44 characters). The value is never echoed in an error. */
+const asMasterKey = z.string().transform((v, ctx) => {
+  const buf = Buffer.from(v.trim(), "base64");
+  if (buf.length !== 32 || buf.toString("base64") !== v.trim()) {
+    ctx.addIssue({ code: "custom", message: "must be 32 random bytes written as base64 (44 characters)" });
+    return z.NEVER;
+  }
+  return buf;
+});
+
 const DEFAULT_DEV_ORIGINS = "http://localhost:3000,http://localhost:3001,http://localhost:5173";
 
 const schema = z
@@ -54,11 +64,30 @@ const schema = z
     RATE_LIMIT_WINDOW_S: z.coerce.number().int().min(1).max(3600).default(60),
     BODY_LIMIT_BYTES: z.coerce.number().int().min(1024).max(10_485_760).default(262_144),
     READINESS_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000).default(2000),
+    SUPABASE_URL: z.url().optional(),
+    SUPABASE_ANON_KEY: z.string().min(20).max(4096).optional(),
+    SUPABASE_SERVICE_USER_EMAIL: z.email().optional(),
+    SUPABASE_SERVICE_USER_PASSWORD: z.string().min(8).max(512).optional(),
+    KEY_ENCRYPTION_MASTER: asMasterKey.optional(),
+    KEY_ENCRYPTION_MASTER_PREVIOUS: asMasterKey.optional(),
     APP_VERSION: z.string().min(1).max(64).optional(),
     RENDER_GIT_COMMIT: z.string().min(7).max(64).optional(),
   })
   .superRefine((env, ctx) => {
+    const supabase = [env.SUPABASE_URL, env.SUPABASE_ANON_KEY, env.SUPABASE_SERVICE_USER_EMAIL, env.SUPABASE_SERVICE_USER_PASSWORD];
+    if (supabase.some((v) => v !== undefined) && supabase.some((v) => v === undefined)) {
+      ctx.addIssue({ code: "custom", path: ["SUPABASE_URL"], message: "SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_USER_EMAIL and SUPABASE_SERVICE_USER_PASSWORD must all be set together" });
+    }
     if (env.NODE_ENV !== "production") return;
+    for (const [name, value] of [
+      ["SUPABASE_URL", env.SUPABASE_URL],
+      ["SUPABASE_ANON_KEY", env.SUPABASE_ANON_KEY],
+      ["SUPABASE_SERVICE_USER_EMAIL", env.SUPABASE_SERVICE_USER_EMAIL],
+      ["SUPABASE_SERVICE_USER_PASSWORD", env.SUPABASE_SERVICE_USER_PASSWORD],
+      ["KEY_ENCRYPTION_MASTER", env.KEY_ENCRYPTION_MASTER],
+    ] as const) {
+      if (value === undefined) ctx.addIssue({ code: "custom", path: [name], message: "is required in production" });
+    }
     if (env.ALLOWED_ORIGINS.length === 0) {
       ctx.addIssue({ code: "custom", path: ["ALLOWED_ORIGINS"], message: "must list at least one website in production" });
     }
@@ -82,6 +111,9 @@ export interface Config {
   rateLimitWindowS: number;
   bodyLimitBytes: number;
   readinessTimeoutMs: number;
+  /** present when the database settings are set; the key and claim features exist only then */
+  supabase?: { url: string; anonKey: string; serviceEmail: string; servicePassword: string };
+  keyMasters?: { current: Buffer; previous?: Buffer };
   version: string;
 }
 
@@ -117,6 +149,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     rateLimitWindowS: e.RATE_LIMIT_WINDOW_S,
     bodyLimitBytes: e.BODY_LIMIT_BYTES,
     readinessTimeoutMs: e.READINESS_TIMEOUT_MS,
+    ...(e.SUPABASE_URL && e.SUPABASE_ANON_KEY && e.SUPABASE_SERVICE_USER_EMAIL && e.SUPABASE_SERVICE_USER_PASSWORD
+      ? { supabase: { url: e.SUPABASE_URL, anonKey: e.SUPABASE_ANON_KEY, serviceEmail: e.SUPABASE_SERVICE_USER_EMAIL, servicePassword: e.SUPABASE_SERVICE_USER_PASSWORD } }
+      : {}),
+    ...(e.KEY_ENCRYPTION_MASTER ? { keyMasters: { current: e.KEY_ENCRYPTION_MASTER, ...(e.KEY_ENCRYPTION_MASTER_PREVIOUS ? { previous: e.KEY_ENCRYPTION_MASTER_PREVIOUS } : {}) } } : {}),
     version: e.APP_VERSION ?? commit ?? "dev",
   };
 }

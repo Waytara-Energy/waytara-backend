@@ -9,11 +9,27 @@ Design and decisions: `docs/GATEWAY_ARCHITECTURE_V2.md` in the dashboard reposit
 | Task | State |
 |---|---|
 | **A2** skeleton: settings, health, security layer, safe logs, CI | done |
-| **A3** core libraries: sealed messages, decode, 15-minute summaries, register map | done (this commit) |
-| A4 runtime: sign-in checks, keys, built-in broker, Supabase writes, first deploy | next |
+| **A3** core libraries: sealed messages, decode, 15-minute summaries, register map | done |
+| **A4a** sign-in checks, equipment keys, claim tickets, the database layer | done (this commit) |
+| A4b built-in broker, data pipeline into Supabase, device status, Render deploy | next |
 | A5 cadence storage and reports; A6 to A11 firmware, setup page, data path, write-back, dashboard, cut-over; Part B EV charger | later |
 
-The core libraries are plain functions with no network or database; they are what the runtime (A4) is built from.
+The core libraries (`src/core`) are plain functions with no network or database; the runtime is built from them.
+
+## Endpoints (A4a)
+
+All under `/v1`. Everything except `/v1/claim` needs `Authorization: Bearer <Supabase access token>`; the token is verified against the project's published signing keys, so the backend holds no sign-in secret. Who may do what is decided by the database (`can_access_site`, `site_staff`, `gw_actor_can_manage_keys`), and a caller who is not allowed gets the same "not found" as for something that does not exist.
+
+| Call | Who | What |
+|---|---|---|
+| `GET /v1/whoami` | any signed-in user | who the token says you are |
+| `POST /v1/equipment/{id}/keys` `{kind, label?}` | admin, or staff assigned to the site | make a key; the secret is in the answer **once** |
+| `POST /v1/keys/{id}/rotate` `{grace_seconds?}` | same | replace a key; the old one stops now or after the grace period |
+| `DELETE /v1/keys/{id}` `{reason?}` | same | revoke a key |
+| `POST /v1/equipment/{id}/claim-tickets` `{hardware_id}` | the site's owner, assigned staff, an admin | a single-use ticket (15 minutes) for one board |
+| `POST /v1/claim` `{ticket, hardware_id, board_public_key}` | the board itself (no sign-in) | the board collects its key, encrypted so only that board can read it |
+
+Keys are encrypted with `KEY_ENCRYPTION_MASTER` before they are stored; answers that contain a secret are never cached. Try the settings on your own computer with `npm run check:supabase`.
 
 ## Run it
 
@@ -58,18 +74,24 @@ src/
     decode.ts        raw register words -> values, from the catalogue rules
     rollup.ts        15-minute summaries (sample and hold), late-data safe
     register-map.ts  what a board polls and may write, built from the catalogue
+    key-vault.ts     equipment keys encrypted at rest (master key from the environment)
+    ecies.ts         the box a board opens to receive its key
+  db/                the one interface to the database (gw_* functions) and its Supabase implementation
+  features/keys/     key and claim logic, key generation, the HTTP routes
+  lib/jwt.ts         sign-in token verification
   server.ts          start-up and signal handling
   app.ts             builds the web app (also used by tests)
   config.ts          settings schema
   lifecycle.ts       graceful shutdown
   logger.ts          log options (redaction)
   plugins/security.ts  headers, CORS, rate limit, errors, request ids
+  plugins/auth.ts    the signed-in user on each request
   routes/health.ts   /healthz and /readyz
   lib/               errors, readiness checks, redaction helpers
 test/                one file per area; no test needs the network
 test/fixtures/       the Waytara Office catalogue and a replayed afternoon of real readings
-test-vectors/        shared proofs that the firmware and this backend agree (seal.json, decode.json)
-scripts/             make-seal-vectors.ts regenerates test-vectors/seal.json (only when the format is changed on purpose)
+test-vectors/        shared proofs that the firmware and this backend agree (seal.json, decode.json, claim.json)
+scripts/             make-seal-vectors.ts, make-claim-vectors.ts (only when a format is changed on purpose); check-supabase.ts
 ```
 
 ## Conventions

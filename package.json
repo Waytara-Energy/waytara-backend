@@ -14,14 +14,17 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check:supabase": "tsx --env-file-if-exists=.env scripts/check-supabase.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.1",
     "@fastify/helmet": "^13.2.0",
     "@fastify/rate-limit": "^11.2.1",
     "@msgpack/msgpack": "^3.1.3",
+    "@supabase/supabase-js": "^2.117.3",
     "fastify": "^5.12.7",
+    "jose": "^6.2.12",
     "zod": "^4.6.7"
   },
   "devDependencies": {

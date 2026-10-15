@@ -1,0 +1,12 @@
+{
+ "about": "What a board receives when it collects its key. ECDH P-256 (ephemeral key of the server, public key of the board), HKDF-SHA-256 (salt = ephemeral public key || board public key, info = 'waytara/v1/claim'), AES-256-GCM (AAD = context). Public keys are 65-byte uncompressed points.",
+ "alg": "ecies-p256-hkdf-sha256-aes256gcm-v1",
+ "context": "b4c30eb8-fba4-4487-aa7a-3c1b089e36e2|A1B2C3D4E5F6",
+ "boardPrivateKeyHex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+ "boardPublicKeyHex": "04515c3d6eb9e396b904d3feca7f54fdcd0cc1e997bf375dca515ad0a6c3b4035f4536be3a50f318fbf9a5475902a221502bef0d57e08c53b2cc0a56f17d9f9354",
+ "ephemeralPrivateKeyHex": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+ "nonceHex": "a0a1a2a3a4a5a6a7a8a9aaab",
+ "equipmentKeyHex": "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0",
+ "serverPublicKeyHex": "0468ec7cf08cd4106e43b14de895426522bd0a45150c027e45c7953434d747e7bae3af39a88ebbee8679bb61e7845c3a89cb9b5a3237c3fdb0b0587dbaf415118d",
+ "ciphertextWithTagHex": "655235f122be3f31106571ff8af4336727c03e78f69521d036016522bac6bff50fcb55260b8c69230ac8b73b5331abad"
+}

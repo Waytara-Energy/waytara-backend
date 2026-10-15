@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { AppError } from "../src/lib/errors.js";
-import { appWithLogCapture, testApp } from "./helpers.js";
+import { PRODUCTION, appWithLogCapture, testApp } from "./helpers.js";
 
 let app: FastifyInstance;
 afterEach(async () => {
@@ -23,7 +23,7 @@ describe("security headers", () => {
     app = await testApp();
     expect((await app.inject({ method: "GET", url: "/healthz" })).headers["strict-transport-security"]).toBeUndefined();
     await app.close();
-    app = await testApp({ NODE_ENV: "production" });
+    app = await testApp(PRODUCTION);
     const prod = await app.inject({ method: "GET", url: "/healthz" });
     expect(prod.headers["strict-transport-security"]).toContain("max-age=15552000");
   });
