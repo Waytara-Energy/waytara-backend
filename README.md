@@ -6,11 +6,14 @@ Design and decisions: `docs/GATEWAY_ARCHITECTURE_V2.md` in the dashboard reposit
 
 ## Status
 
-**Task A2 (this commit): the skeleton.** It starts, answers health checks, protects itself, logs safely, and has no business logic yet.
-
-| Done | Not yet |
+| Task | State |
 |---|---|
-| Validated settings; `/healthz` and `/readyz`; security headers; allowed-websites list; rate limits (including unknown paths); safe error answers; request ids; secret-free logs; graceful shutdown; tests; CI | Sign-in checks (A4); MQTT broker (A4); Supabase and storage (A4, A5); decoding and summaries (A3); OCPP (Part B) |
+| **A2** skeleton: settings, health, security layer, safe logs, CI | done |
+| **A3** core libraries: sealed messages, decode, 15-minute summaries, register map | done (this commit) |
+| A4 runtime: sign-in checks, keys, built-in broker, Supabase writes, first deploy | next |
+| A5 cadence storage and reports; A6 to A11 firmware, setup page, data path, write-back, dashboard, cut-over; Part B EV charger | later |
+
+The core libraries are plain functions with no network or database; they are what the runtime (A4) is built from.
 
 ## Run it
 
@@ -50,6 +53,11 @@ All settings are environment variables, checked once at start-up. A wrong value 
 
 ```
 src/
+  core/
+    seal.ts          sealed message format (AES-256-GCM, HKDF, MessagePack) and replay guard
+    decode.ts        raw register words -> values, from the catalogue rules
+    rollup.ts        15-minute summaries (sample and hold), late-data safe
+    register-map.ts  what a board polls and may write, built from the catalogue
   server.ts          start-up and signal handling
   app.ts             builds the web app (also used by tests)
   config.ts          settings schema
@@ -59,6 +67,9 @@ src/
   routes/health.ts   /healthz and /readyz
   lib/               errors, readiness checks, redaction helpers
 test/                one file per area; no test needs the network
+test/fixtures/       the Waytara Office catalogue and a replayed afternoon of real readings
+test-vectors/        shared proofs that the firmware and this backend agree (seal.json, decode.json)
+scripts/             make-seal-vectors.ts regenerates test-vectors/seal.json (only when the format is changed on purpose)
 ```
 
 ## Conventions

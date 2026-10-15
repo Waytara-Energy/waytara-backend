@@ -1,0 +1,28 @@
+{
+ "about": "Shared proof that the backend and the firmware seal messages identically. Layout: version(1) keyId(2) counter(4 BE) nonce(12) ciphertext tag(16). AES-256-GCM, key = HKDF-SHA-256(ikm = equipment key, salt = 'waytara/v1/seal', info = '<equipmentId>/<direction>'), AAD = first 7 header bytes + topic (UTF-8).",
+ "equipmentKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+ "equipmentId": "b4c30eb8-fba4-4487-aa7a-3c1b089e36e2",
+ "keyIdHex": "630d",
+ "vectors": [
+  {
+   "name": "gateway data batch (up)",
+   "direction": "up",
+   "topic": "wt/v1/b4c30eb8-fba4-4487-aa7a-3c1b089e36e2/up/data",
+   "counter": 7,
+   "nonceHex": "0102030405060708090a0b0c",
+   "derivedKeyHex": "37899bf9ba8f767e65bf9571528ba76c4f65d2b75996d7e548c9861ab73c2fe6",
+   "plaintextMsgpackHex": "85a4626f6f74cd3039a97365715f666972737401a87365715f6c61737402a76d61705f76657203a66672616d65739283a174cf000001a13e256300a373657101a6626c6f636b739292ccba917892ccbe91cdffc483a174cf000001a13e257688a373657102a6626c6f636b739192ccba917d",
+   "sealedHex": "01630d000000070102030405060708090a0b0c3d1c7b75415f8a5741559d13ec21300070ef69a097decdd79f328f8119441a18db7d49d92c07d288a27d448d008fc400a896538d7ce44fe73f85741f4149d1e71c2d78bf953ebb76fdb057da529e62269ea8828bfbe96416e4859eda0b76a5ba88bc1acd999dc63146a178d381c511baece464a6eea4a234393def8660bd91cfac0e"
+  },
+  {
+   "name": "acknowledgement (dn)",
+   "direction": "dn",
+   "topic": "wt/v1/b4c30eb8-fba4-4487-aa7a-3c1b089e36e2/dn/ack",
+   "counter": 4294967295,
+   "nonceHex": "f0f1f2f3f4f5f6f7f8f9fafb",
+   "derivedKeyHex": "2de8dc788a5beb60e52a3994908b40a3e61515af38dca4f396423a947763de03",
+   "plaintextMsgpackHex": "82a4626f6f74cd3039a373657102",
+   "sealedHex": "01630dfffffffff0f1f2f3f4f5f6f7f8f9fafb5cf6f9ee7d6d908ca3b647de729ab9911bfe9a612a36b9d037cb318df16f"
+  }
+ ]
+}

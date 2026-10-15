@@ -1,0 +1,621 @@
+{
+ "about": "Raw register words and the value the catalogue rule must give. Generated from the live catalogue and the 10 Sep 2026 register sweep of the Waytara Office inverter.",
+ "vectors": [
+  {
+   "key": "inverter_run_state",
+   "registers": [
+    59
+   ],
+   "raw": [
+    2
+   ],
+   "expected": 2,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "day_active_energy_kwh",
+   "registers": [
+    60
+   ],
+   "raw": [
+    6
+   ],
+   "expected": 0.6,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "day_reactive_energy_kvarh",
+   "registers": [
+    61
+   ],
+   "raw": [
+    250
+   ],
+   "expected": 25,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "month_pv_energy_kwh",
+   "registers": [
+    65
+   ],
+   "raw": [
+    0
+   ],
+   "expected": 0,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "month_load_energy_kwh",
+   "registers": [
+    66
+   ],
+   "raw": [
+    0
+   ],
+   "expected": 0,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "month_grid_export_energy_kwh",
+   "registers": [
+    67
+   ],
+   "raw": [
+    0
+   ],
+   "expected": 0,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "day_battery_charge_energy_kwh",
+   "registers": [
+    70
+   ],
+   "raw": [
+    5
+   ],
+   "expected": 0.5,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "day_battery_discharge_energy_kwh",
+   "registers": [
+    71
+   ],
+   "raw": [
+    1
+   ],
+   "expected": 0.1,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "day_grid_import_energy_kwh",
+   "registers": [
+    76
+   ],
+   "raw": [
+    2
+   ],
+   "expected": 0.2,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "day_grid_export_energy_kwh",
+   "registers": [
+    77
+   ],
+   "raw": [
+    0
+   ],
+   "expected": 0,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "grid_frequency_hz",
+   "registers": [
+    79
+   ],
+   "raw": [
+    5008
+   ],
+   "expected": 50.08,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "day_load_energy_kwh",
+   "registers": [
+    84
+   ],
+   "raw": [
+    9
+   ],
+   "expected": 0.9,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "inverter_dc_temperature_c",
+   "registers": [
+    90
+   ],
+   "raw": [
+    1504
+   ],
+   "expected": 50.4,
+   "source": "sweep 10 Sep: the catalogue is right (the sweep applied no offset)"
+  },
+  {
+   "key": "inverter_ac_temperature_c",
+   "registers": [
+    91
+   ],
+   "raw": [
+    1444
+   ],
+   "expected": 44.4,
+   "source": "sweep 10 Sep: the catalogue is right (the sweep applied no offset)"
+  },
+  {
+   "key": "fault_message_1",
+   "registers": [
+    103
+   ],
+   "raw": [
+    0
+   ],
+   "expected": 0,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "fault_message_2",
+   "registers": [
+    104
+   ],
+   "raw": [
+    0
+   ],
+   "expected": 0,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "fault_message_3",
+   "registers": [
+    105
+   ],
+   "raw": [
+    0
+   ],
+   "expected": 0,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "fault_message_4",
+   "registers": [
+    106
+   ],
+   "raw": [
+    0
+   ],
+   "expected": 0,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "day_pv_energy_kwh",
+   "registers": [
+    108
+   ],
+   "raw": [
+    9
+   ],
+   "expected": 0.9,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "pv1_voltage_v",
+   "registers": [
+    109
+   ],
+   "raw": [
+    3111
+   ],
+   "expected": 311.1,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "pv1_current_a",
+   "registers": [
+    110
+   ],
+   "raw": [
+    10
+   ],
+   "expected": 1,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "pv2_voltage_v",
+   "registers": [
+    111
+   ],
+   "raw": [
+    3130
+   ],
+   "expected": 313,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "pv2_current_a",
+   "registers": [
+    112
+   ],
+   "raw": [
+    10
+   ],
+   "expected": 1,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "grid_l1_voltage_v",
+   "registers": [
+    150
+   ],
+   "raw": [
+    2289
+   ],
+   "expected": 228.9,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "inverter_l1_voltage_v",
+   "registers": [
+    154
+   ],
+   "raw": [
+    2288
+   ],
+   "expected": 228.8,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "grid_l1_current_a",
+   "registers": [
+    160
+   ],
+   "raw": [
+    96
+   ],
+   "expected": 0.96,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "inverter_l1_current_a",
+   "registers": [
+    164
+   ],
+   "raw": [
+    120
+   ],
+   "expected": 1.2,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "generator_power_w",
+   "registers": [
+    166
+   ],
+   "raw": [
+    0
+   ],
+   "expected": 0,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "grid_l1_power_w",
+   "registers": [
+    167
+   ],
+   "raw": [
+    25
+   ],
+   "expected": 25,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "grid_total_power_w",
+   "registers": [
+    169
+   ],
+   "raw": [
+    25
+   ],
+   "expected": 25,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "grid_ct_total_power_w",
+   "registers": [
+    172
+   ],
+   "raw": [
+    0
+   ],
+   "expected": 0,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "inverter_output_power_w",
+   "registers": [
+    175
+   ],
+   "raw": [
+    151
+   ],
+   "expected": 151,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "load_l1_power_w",
+   "registers": [
+    176
+   ],
+   "raw": [
+    176
+   ],
+   "expected": 176,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "load_total_power_w",
+   "registers": [
+    178
+   ],
+   "raw": [
+    182
+   ],
+   "expected": 182,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "generator_voltage_v",
+   "registers": [
+    181
+   ],
+   "raw": [
+    838
+   ],
+   "expected": 83.8,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "battery_temperature_c",
+   "registers": [
+    182
+   ],
+   "raw": [
+    310
+   ],
+   "expected": 31,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "battery_voltage_v",
+   "registers": [
+    183
+   ],
+   "raw": [
+    5536
+   ],
+   "expected": 55.36,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "battery_soc_pct",
+   "registers": [
+    184
+   ],
+   "raw": [
+    99
+   ],
+   "expected": 99,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "pv1_power_w",
+   "registers": [
+    186
+   ],
+   "raw": [
+    295
+   ],
+   "expected": 295,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "pv2_power_w",
+   "registers": [
+    187
+   ],
+   "raw": [
+    293
+   ],
+   "expected": 293,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "battery_power_w",
+   "registers": [
+    190
+   ],
+   "raw": [
+    64971
+   ],
+   "expected": -565,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "battery_current_a",
+   "registers": [
+    191
+   ],
+   "raw": [
+    64579
+   ],
+   "expected": -9.57,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "load_frequency_hz",
+   "registers": [
+    192
+   ],
+   "raw": [
+    5008
+   ],
+   "expected": 50.08,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "inverter_output_frequency_hz",
+   "registers": [
+    193
+   ],
+   "raw": [
+    5008
+   ],
+   "expected": 50.08,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "grid_relay_status",
+   "registers": [
+    194
+   ],
+   "raw": [
+    1
+   ],
+   "expected": 1,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "generator_frequency_hz",
+   "registers": [
+    196
+   ],
+   "raw": [
+    0
+   ],
+   "expected": 0,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "battery_max_charge_current_a",
+   "registers": [
+    210
+   ],
+   "raw": [
+    50
+   ],
+   "expected": 50,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "battery_max_discharge_current_a",
+   "registers": [
+    211
+   ],
+   "raw": [
+    50
+   ],
+   "expected": 50,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "battery_shutdown_soc_pct",
+   "registers": [
+    217
+   ],
+   "raw": [
+    10
+   ],
+   "expected": 10,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "battery_restart_soc_pct",
+   "registers": [
+    218
+   ],
+   "raw": [
+    30
+   ],
+   "expected": 30,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "generator_port_function",
+   "registers": [
+    235
+   ],
+   "raw": [
+    0
+   ],
+   "expected": 0,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "work_mode",
+   "registers": [
+    244
+   ],
+   "raw": [
+    1
+   ],
+   "expected": 1,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "max_export_power_w",
+   "registers": [
+    245
+   ],
+   "raw": [
+    8000
+   ],
+   "expected": 8000,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "bms_charge_voltage_v",
+   "registers": [
+    312
+   ],
+   "raw": [
+    5840
+   ],
+   "expected": 58.4,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "bms_charge_current_limit_a",
+   "registers": [
+    314
+   ],
+   "raw": [
+    10
+   ],
+   "expected": 10,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  },
+  {
+   "key": "bms_discharge_current_limit_a",
+   "registers": [
+    315
+   ],
+   "raw": [
+    120
+   ],
+   "expected": 120,
+   "source": "sweep 10 Sep: catalogue and sweep agree"
+  }
+ ]
+}
