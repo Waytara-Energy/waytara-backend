@@ -173,6 +173,11 @@ export class RollupEngine {
     return out;
   }
 
+  /** Puts buckets that were handed out but could not be stored back, so the next collectClosed returns them again. */
+  requeue(buckets: readonly ClosedBucket[]): void {
+    for (const b of buckets) this.keys.get(b.key)?.dirty.add(b.start);
+  }
+
   /** The current, unfinished bucket of one value as it stands now. */
   open(key: string, now: number): BucketStats | null {
     const s = this.keys.get(key);

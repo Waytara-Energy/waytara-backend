@@ -1,6 +1,7 @@
 import { CLAIM_ALG, EciesError, eciesEncrypt, isValidPublicKey } from "../../core/ecies.js";
 import { KeyVault } from "../../core/key-vault.js";
 import { DbError, type GatewayDb, type KeyKind } from "../../db/gateway-db.js";
+import type { KeyChangeBus } from "../../lib/key-events.js";
 import { AppError, badRequest, notFound } from "../../lib/errors.js";
 import { generateSecret } from "./generate.js";
 
@@ -47,6 +48,7 @@ export class KeyService {
     private readonly db: GatewayDb,
     private readonly vault: KeyVault,
     private readonly now: () => Date = () => new Date(),
+    private readonly bus?: KeyChangeBus,
   ) {}
 
   private async requireManage(actor: Actor, equipmentId: string): Promise<void> {
@@ -72,6 +74,7 @@ export class KeyService {
         actor: actor.id,
         ip: actor.ip,
       });
+      this.bus?.changed(equipmentId);
       return { keyId, equipmentId, kind, fingerprint, secret: s.display, createdAt: this.now().toISOString() };
     } catch (error) {
       mapDb(error);
@@ -93,6 +96,7 @@ export class KeyService {
         ip: actor.ip,
         graceSeconds,
       });
+      this.bus?.changed(info.equipmentId);
       return { keyId: newId, equipmentId: info.equipmentId, kind: info.kind, fingerprint, secret: s.display, createdAt: this.now().toISOString() };
     } catch (error) {
       mapDb(error);
@@ -104,7 +108,9 @@ export class KeyService {
       const info = await this.db.keyInfo(keyId);
       if (!info) throw notFound();
       await this.requireManage(actor, info.equipmentId);
-      return { revoked: await this.db.revokeKey({ keyId, actor: actor.id, ip: actor.ip, reason }) };
+      const revoked = await this.db.revokeKey({ keyId, actor: actor.id, ip: actor.ip, reason });
+      if (revoked) this.bus?.changed(info.equipmentId);
+      return { revoked };
     } catch (error) {
       mapDb(error);
     }
@@ -156,6 +162,7 @@ export class KeyService {
           if (error instanceof DbError && error.kind === "not_found") throw refuse();
           throw error;
         });
+      this.bus?.changed(claimed.equipmentId);
       return { equipmentId: claimed.equipmentId, keyId: claimed.keyId, alg: CLAIM_ALG, serverPublicKey: box.ephemeralPublicKey, nonce: box.nonce, ciphertext: box.ciphertext };
     } catch (error) {
       if (error instanceof EciesError) throw badRequest("The board key is not valid");

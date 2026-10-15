@@ -1,0 +1,27 @@
+{
+  "about": "The MQTT password of a board: base64url (no padding) of HMAC-SHA-256 with the 32-byte equipment key as the HMAC key over the UTF-8 text 'wt-mqtt-login/v1|<equipmentId>'. User name = equipment id, client id = 'gw-<equipmentId>'.",
+  "message": "wt-mqtt-login/v1|<equipmentId>",
+  "cases": [
+    {
+      "name": "ascending key",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "equipmentId": "b4c30eb8-fba4-4487-aa7a-3c1b089e36e2",
+      "clientId": "gw-b4c30eb8-fba4-4487-aa7a-3c1b089e36e2",
+      "password": "-nwXsdIjsDFUEqAfaFUecNRwPczoaq6UkgGIiBxYMto"
+    },
+    {
+      "name": "descending key",
+      "keyHex": "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0",
+      "equipmentId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "clientId": "gw-aaaaaaaa-0000-4000-8000-000000000001",
+      "password": "qu7R59E4MF6gOQBKnbWhT7AEyx-OHt36f-ZFFPmSo4k"
+    },
+    {
+      "name": "repeated byte key",
+      "keyHex": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+      "equipmentId": "00000000-0000-4000-8000-000000000000",
+      "clientId": "gw-00000000-0000-4000-8000-000000000000",
+      "password": "aLjPhlNdbXLtGHYtBPKdEedQXFzolwGW8ZK8RxVyN1E"
+    }
+  ]
+}

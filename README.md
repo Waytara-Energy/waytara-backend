@@ -10,8 +10,9 @@ Design and decisions: `docs/GATEWAY_ARCHITECTURE_V2.md` in the dashboard reposit
 |---|---|
 | **A2** skeleton: settings, health, security layer, safe logs, CI | done |
 | **A3** core libraries: sealed messages, decode, 15-minute summaries, register map | done |
-| **A4a** sign-in checks, equipment keys, claim tickets, the database layer | done (this commit) |
-| A4b built-in broker, data pipeline into Supabase, device status, Render deploy | next |
+| **A4a** sign-in checks, equipment keys, claim tickets, the database layer | done |
+| **A4b** built-in MQTT broker (`/mqtt`, WebSocket) and the data intake (sealed batches to 15-minute summaries, acknowledgements, register map) | done; stays off in production until A4c supplies the storage |
+| A4c storage in Supabase, device status, live end-to-end test | next |
 | A5 cadence storage and reports; A6 to A11 firmware, setup page, data path, write-back, dashboard, cut-over; Part B EV charger | later |
 
 The core libraries (`src/core`) are plain functions with no network or database; the runtime is built from them.
@@ -30,6 +31,12 @@ All under `/v1`. Everything except `/v1/claim` needs `Authorization: Bearer <Sup
 | `POST /v1/claim` `{ticket, hardware_id, board_public_key}` | the board itself (no sign-in) | the board collects its key, encrypted so only that board can read it |
 
 Keys are encrypted with `KEY_ENCRYPTION_MASTER` before they are stored; answers that contain a secret are never cached. Try the settings on your own computer with `npm run check:supabase`.
+
+## The broker (A4b)
+
+Boards connect with MQTT over `wss://hub.waytaraenergy.com/mqtt`. Login: user name = equipment id, client id = `gw-<equipment id>`, password = a token derived one way from the equipment key (`base64url(HMAC-SHA-256(key, "wt-mqtt-login/v1|<id>"))`, vectors in `test-vectors/mqtt-login.json`). A board may publish only `wt/v1/<id>/up/{data,hb,evt,state}`, subscribe only to `wt/v1/<id>/dn/{ack,cmd,map}` (no wildcards), and use only its own `up/state` as last-will. Every refusal looks the same to the board. Revoking or rotating a key drops the connection within seconds; a source address with too many failed logins is shut out for a minute.
+
+Sealed batches become 15-minute summaries; a frame is acknowledged only once the summary containing it has been written and is at least two minutes behind the last written boundary, so a restart can rebuild the open bucket from frames the board still holds.
 
 ## Run it
 
@@ -78,6 +85,8 @@ src/
     ecies.ts         the box a board opens to receive its key
   db/                the one interface to the database (gw_* functions) and its Supabase implementation
   features/keys/     key and claim logic, key generation, the HTTP routes
+  features/broker/   the MQTT broker (Aedes), topic rules, key cache, the /mqtt WebSocket route
+  features/ingest/   sealed message intake: decode, summaries, acknowledgements, register map, heartbeat
   lib/jwt.ts         sign-in token verification
   server.ts          start-up and signal handling
   app.ts             builds the web app (also used by tests)
@@ -90,8 +99,8 @@ src/
   lib/               errors, readiness checks, redaction helpers
 test/                one file per area; no test needs the network
 test/fixtures/       the Waytara Office catalogue and a replayed afternoon of real readings
-test-vectors/        shared proofs that the firmware and this backend agree (seal.json, decode.json, claim.json)
-scripts/             make-seal-vectors.ts, make-claim-vectors.ts (only when a format is changed on purpose); check-supabase.ts
+test-vectors/        shared proofs that the firmware and this backend agree (seal.json, decode.json, claim.json, mqtt-login.json)
+scripts/             make-seal-vectors.ts, make-claim-vectors.ts, make-mqtt-login-vectors.ts (only when a format is changed on purpose); check-supabase.ts
 ```
 
 ## Conventions
