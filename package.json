@@ -18,7 +18,8 @@
     "check:supabase": "tsx --env-file-if-exists=.env scripts/check-supabase.ts",
     "check:render": "tsx --env-file=.env.render scripts/check-supabase.ts",
     "check:r2": "tsx --env-file-if-exists=.env scripts/check-r2.ts",
-    "check:render-r2": "tsx --env-file=.env.render scripts/check-r2.ts"
+    "check:render-r2": "tsx --env-file=.env.render scripts/check-r2.ts",
+    "inspect:ocpp-log": "tsx --env-file=.env.render scripts/inspect-ocpp-log.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1152.0",
