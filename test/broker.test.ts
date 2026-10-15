@@ -96,6 +96,16 @@ describe("login", () => {
     expect(c.connected).toBe(true);
   });
 
+  it("records that the key was used, once for a board that reconnects often", async () => {
+    const keyId = db.keys.find((k) => k.equipmentId === EQ)!.keyId;
+    for (let i = 0; i < 3; i++) {
+      const c = await connect();
+      await c.endAsync(true);
+    }
+    await wait(150);
+    expect(db.touched.map((t) => t.keyId)).toEqual([keyId]);
+  });
+
   it("refuses everything else the same way", async () => {
     const ok = deriveLoginToken(key, EQ);
     expect(await refused({ password: "wrong" })).toBe(true);

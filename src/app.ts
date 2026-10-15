@@ -101,6 +101,14 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
         if (throttle.size > 2000) throttle.clear();
         void db.recordKeyEvent({ equipmentId, event: "auth_failed", ip, detail: { reason } }).catch(() => undefined);
       };
+      // "last used" of a key, written at most every 5 minutes per key so a board that reconnects often does not flood the database
+      const touched = new Map<string, number>();
+      const touchKey = (keyId: string, ip: string | null) => {
+        if (Date.now() - (touched.get(keyId) ?? 0) < 300_000) return;
+        touched.set(keyId, Date.now());
+        if (touched.size > 2000) touched.clear();
+        void db.touchKey(keyId, ip).catch(() => undefined);
+      };
       const ingest: { current?: IngestService } = {}; // the broker is made first, the intake needs the broker
       const broker = new Broker({
         keys,
@@ -109,6 +117,7 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
         onUp: (id, name, payload) => void ingest.current?.handleUp(id, name, payload),
         onReady: (id) => void ingest.current?.handleReady(id),
         onAuthFailed: (id, ip) => recordFailure(id, ip, "mqtt login"),
+        onLogin: (_id, keyId, ip) => touchKey(keyId, ip),
       });
       await broker.start();
       const cadence = objectStore ? new CadenceWriter({ store: objectStore, log: app.log }) : undefined;

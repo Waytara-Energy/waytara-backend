@@ -112,8 +112,11 @@ export class FakeDb implements GatewayDb {
       .map((k) => ({ keyId: k.keyId, kind: k.kind, ciphertext: k.ciphertext, expiresAt: k.expiresAt }));
   }
 
-  async touchKey(): Promise<void> {
+  touched: { keyId: string; ip: string | null }[] = [];
+
+  async touchKey(keyId: string, ip?: string | null): Promise<void> {
     this.check();
+    this.touched.push({ keyId, ip: ip ?? null });
   }
 
   async recordKeyEvent(a: Parameters<GatewayDb["recordKeyEvent"]>[0]): Promise<void> {

@@ -31,6 +31,8 @@ export interface BrokerOptions {
   /** called when a board has logged in successfully and its connection is ready */
   onReady?: (equipmentId: string) => void;
   onDisconnect?: (equipmentId: string) => void;
+  /** called (best effort) after a successful login, with the id of the key that matched and the board's address */
+  onLogin?: (equipmentId: string, keyId: string, ip: string | null) => void;
   /** called (best effort) for a refused login that named a well-formed equipment id */
   onAuthFailed?: (equipmentId: string, ip: string | null) => void;
   maxPayloadBytes?: number;
@@ -200,6 +202,7 @@ export class Broker {
       client.loginToken = match.loginToken;
       client.ip = this.ipOf(client);
       this.remember(client);
+      this.o.onLogin?.(id, match.keyId, client.ip ?? null);
       done(null, true);
     } catch (error) {
       this.o.log.warn({ err: error instanceof Error ? error.message : String(error) }, "mqtt login check failed");
