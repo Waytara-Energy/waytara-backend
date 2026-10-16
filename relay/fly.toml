@@ -1,0 +1,26 @@
+# Fly.io settings for the charger relay. Plain HTTP/WebSocket on port 80 is allowed on purpose (the charger cannot do TLS);
+# the relay forwards to the hub over wss://. One small always-on machine is enough.
+app = "waytara-ocpp-relay"
+primary_region = "sin"
+
+[env]
+  PORT = "8080"
+  HUB_URL = "wss://hub.waytaraenergy.com"
+
+[http_service]
+  internal_port = 8080
+  force_https = false
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

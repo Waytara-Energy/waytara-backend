@@ -57,7 +57,6 @@ export interface CadenceRouteDeps {
 
 export async function registerCadenceRoutes(app: FastifyInstance, d: CadenceRouteDeps): Promise<void> {
   const now = d.now ?? Date.now;
-  const signedIn = { preHandler: app.authenticate };
   const profiles = new Map<string, { at: number; profile: EquipmentProfile }>();
 
   /** Who may read this equipment's data, and its catalogue. Anyone not allowed gets the same "not found" as for unknown equipment. */
