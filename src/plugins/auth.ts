@@ -34,3 +34,28 @@ export function registerAuth(app: FastifyInstance, verify: TokenVerifier): void 
     }
   });
 }
+
+/** How many requests from one address a signed-in route lets through per minute before it even looks at who is asking (shared addresses, such as the dashboard's server, carry many people). */
+const ADDRESS_FLOOR_PER_MINUTE = 600;
+
+/**
+ * Options for a route that needs a signed-in person and is limited per person, not per address: the dashboards call the hub from shared
+ * server addresses, so a per-address limit would make one busy person slow everybody else down. The per-person limit runs after the
+ * sign-in check (so the key is the verified user, never something the caller wrote); a wide per-address floor in front keeps
+ * unauthenticated floods cheap.
+ */
+export function userLimited(app: FastifyInstance, max: number) {
+  // the plugin runs only one limiter per request, so the address floor is called by hand
+  const floor = app.createRateLimit({ max: ADDRESS_FLOOR_PER_MINUTE, timeWindow: "1 minute" });
+  return {
+    onRequest: async (request: FastifyRequest) => {
+      const r = await floor(request);
+      // `isAllowed` is only true for an allow-listed request; a counted request is over the limit when `isExceeded` says so
+      if (r.isAllowed || !r.isExceeded) return;
+      const retry = Math.max(1, Math.ceil(r.ttl / 1000));
+      throw new AppError(429, "rate_limited", `Too many requests. Try again in ${retry} seconds.`);
+    },
+    preHandler: app.authenticate,
+    config: { rateLimit: { max, timeWindow: "1 minute", hook: "preHandler" as const, keyGenerator: (request: FastifyRequest) => request.user?.id ?? request.ip } },
+  };
+}

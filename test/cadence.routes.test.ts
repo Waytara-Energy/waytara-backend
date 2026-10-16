@@ -231,6 +231,20 @@ describe("the limits", () => {
     await bad({ keys: "," }, /between 1 and 40/);
   });
 
+  it("counts requests per person, not per address: one busy person does not slow down another behind the same address", async () => {
+    const url = `/v1/reports/cadence/keys?equipment=${EQ}`;
+    for (let i = 0; i < 30; i++) expect((await get(url, "tok-admin")).statusCode).toBe(200);
+    const over = await get(url, "tok-admin");
+    expect(over.statusCode).toBe(429);
+    expect(over.json().error.code).toBe("rate_limited");
+    // same address (the test client always has one), another person: still allowed
+    expect((await get(url, "tok-customer")).statusCode).toBe(200);
+  });
+
+  it("does not give a made-up token an allowance of its own: it is refused at sign-in", async () => {
+    expect((await get(`/v1/reports/cadence/keys?equipment=${EQ}`, "tok-not-a-person")).statusCode).toBe(401);
+  });
+
   it("refuses a request that is not in the expected shape, naming the problem and never the value", async () => {
     const r = await get("/v1/reports/cadence?equipment=nope&from=x&to=y&keys=a");
     expect(r.statusCode).toBe(400);

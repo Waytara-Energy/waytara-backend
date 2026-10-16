@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import { badRequest } from "../../lib/errors.js";
-import { clientIp } from "../../plugins/auth.js";
+import { clientIp, userLimited } from "../../plugins/auth.js";
 import type { KeyService } from "./service.js";
 
 const hardwareId = z.string().regex(/^[A-Za-z0-9:_-]{6,64}$/, "must be 6 to 64 letters, digits, colons, dashes or underscores");
@@ -40,7 +40,7 @@ export async function registerKeyRoutes(app: FastifyInstance, service: KeyServic
 
   app.get("/v1/whoami", signedIn, async (request) => ({ user_id: request.user!.id, email: request.user!.email ?? null, role: request.user!.role }));
 
-  app.post("/v1/equipment/:id/keys", { ...signedIn, config: limited(20) }, async (request, reply) => {
+  app.post("/v1/equipment/:id/keys", userLimited(app, 20), async (request, reply) => {
     const { id } = parse(idParam, request.params);
     const body = parse(createBody, request.body);
     const r = await service.createKey({ id: request.user!.id, ip: clientIp(request) }, id, body.kind, body.label ?? null);
@@ -49,7 +49,7 @@ export async function registerKeyRoutes(app: FastifyInstance, service: KeyServic
     return { key_id: r.keyId, equipment_id: r.equipmentId, kind: r.kind, fingerprint: r.fingerprint, secret: r.secret, created_at: r.createdAt };
   });
 
-  app.post("/v1/keys/:id/rotate", { ...signedIn, config: limited(20) }, async (request, reply) => {
+  app.post("/v1/keys/:id/rotate", userLimited(app, 20), async (request, reply) => {
     const { id } = parse(idParam, request.params);
     const body = parse(rotateBody, request.body);
     const r = await service.rotateKey({ id: request.user!.id, ip: clientIp(request) }, id, body.grace_seconds);
@@ -58,20 +58,20 @@ export async function registerKeyRoutes(app: FastifyInstance, service: KeyServic
     return { key_id: r.keyId, equipment_id: r.equipmentId, kind: r.kind, fingerprint: r.fingerprint, secret: r.secret, created_at: r.createdAt, replaces: id };
   });
 
-  app.delete("/v1/keys/:id", { ...signedIn, config: limited(30) }, async (request) => {
+  app.delete("/v1/keys/:id", userLimited(app, 30), async (request) => {
     const { id } = parse(idParam, request.params);
     const body = parse(revokeBody, request.body);
     const r = await service.revokeKey({ id: request.user!.id, ip: clientIp(request) }, id, body.reason ?? null);
     return { revoked: r.revoked };
   });
 
-  app.post("/v1/equipment/:id/release", { ...signedIn, config: limited(10) }, async (request) => {
+  app.post("/v1/equipment/:id/release", userLimited(app, 10), async (request) => {
     const { id } = parse(idParam, request.params);
     const r = await service.releaseBoard({ id: request.user!.id, ip: clientIp(request) }, id);
     return { released: r.released };
   });
 
-  app.post("/v1/equipment/:id/claim-tickets", { ...signedIn, config: limited(20) }, async (request, reply) => {
+  app.post("/v1/equipment/:id/claim-tickets", userLimited(app, 20), async (request, reply) => {
     const { id } = parse(idParam, request.params);
     const body = parse(ticketBody, request.body);
     const r = await service.issueClaimTicket({ id: request.user!.id, ip: clientIp(request) }, id, body.hardware_id);

@@ -122,7 +122,7 @@ All settings are environment variables, checked once at start-up. A wrong value 
 ## What the skeleton protects against
 
 * **Browsers from other websites:** CORS answers only for the websites in `ALLOWED_ORIGINS` (https only in production).
-* **Floods and probing:** a rate limit per client address, applied to unknown paths as well; the health probe is exempt.
+* **Floods and probing:** a rate limit per client address, applied to unknown paths as well; the health probe is exempt. The signed-in routes (reports, device keys) are limited per signed-in person instead (30 a minute for reports), behind a wide per-address floor (600 a minute), because the dashboards call the hub from shared server addresses.
 * **Oversized or broken requests:** body size limit, and JSON or schema errors answered with a short JSON error that never echoes the input.
 * **Leaks through errors:** an unexpected error is logged in full and answered with "Something went wrong" plus a request id.
 * **Leaks through logs:** `Authorization`, cookies, and secret query values (`token`, `ticket`, `key`, `password`...) are removed before anything is written.

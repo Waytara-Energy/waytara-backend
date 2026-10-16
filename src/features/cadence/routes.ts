@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { DbError, type GatewayDb } from "../../db/gateway-db.js";
 import { AppError, badRequest, notFound } from "../../lib/errors.js";
+import { userLimited } from "../../plugins/auth.js";
 import type { EquipmentProfile, IngestStore } from "../ingest/store.js";
 import type { CadenceArchive } from "./archive.js";
 import { availableColumns, csvHeader, csvLines, decodeRows, pickColumns, type ReportColumn, type Scope } from "./report.js";
@@ -80,10 +81,9 @@ export async function registerCadenceRoutes(app: FastifyInstance, d: CadenceRout
     return { scope, columns: availableColumns(profile, scope) };
   }
 
-  const limited = { rateLimit: { max: 30, timeWindow: "1 minute" } };
 
   // The values this person can pick from, with the names and units shown to people.
-  app.get("/v1/reports/cadence/keys", { ...signedIn, config: limited }, async (request, reply) => {
+  app.get("/v1/reports/cadence/keys", userLimited(app, 30), async (request, reply) => {
     const q = parse(keysQuery, request.query);
     const { scope, columns } = await access(request.user!.id, q.equipment);
     reply.header("Cache-Control", "private, no-store");
@@ -96,7 +96,7 @@ export async function registerCadenceRoutes(app: FastifyInstance, d: CadenceRout
     };
   });
 
-  app.get("/v1/reports/cadence", { ...signedIn, config: limited }, async (request, reply) => {
+  app.get("/v1/reports/cadence", userLimited(app, 30), async (request, reply) => {
     const q = parse(reportQuery, request.query);
     const t = now();
     if (q.to <= q.from) throw badRequest("The end must be after the start.");
