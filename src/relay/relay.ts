@@ -59,6 +59,7 @@ export async function startRelay(options: RelayOptions): Promise<RunningRelay> {
     response.writeHead(404).end();
   });
 
+  server.on("clientError", (_error, socket) => socket.destroy());
   server.on("upgrade", (request: IncomingMessage, socket: Duplex) => {
     const url = request.url ?? "";
     const path = url.split("?")[0] ?? "";
@@ -72,16 +73,22 @@ export async function startRelay(options: RelayOptions): Promise<RunningRelay> {
     if (typeof request.headers.authorization === "string") headers.Authorization = request.headers.authorization;
 
     // Connect to the hub first: a refusal there (404 for a wrong secret) is passed back before the charger's socket is upgraded.
+    // a dropped or reset connection is normal on the open internet: every socket gets an error handler, so one can never stop the relay
+    socket.on("error", () => undefined);
     const upstream = new WebSocket(`${hub.origin}${path}`, ["ocpp1.6"], { headers, maxPayload: MAX_PAYLOAD, handshakeTimeout: 15_000 });
     let settled = false;
-    upstream.once("unexpected-response", (_req, res) => {
-      if (settled) return;
-      settled = true;
-      log(`hub refused a connection from ${from}: ${res.statusCode}`);
-      refuse(socket, `${res.statusCode ?? 502} ${res.statusCode === 404 ? "Not Found" : "Bad Gateway"}`);
-      res.resume();
+    upstream.on("unexpected-response", (_req, res) => {
+      res.on("error", () => undefined);
+      res.socket?.on("error", () => undefined);
+      if (!settled) {
+        settled = true;
+        log(`hub refused a connection from ${from}: ${res.statusCode}`);
+        refuse(socket, `${res.statusCode ?? 502} ${res.statusCode === 404 ? "Not Found" : "Bad Gateway"}`);
+      }
+      res.destroy();
+      upstream.terminate();
     });
-    upstream.once("error", (error) => {
+    upstream.on("error", (error) => {
       if (settled) return;
       settled = true;
       log(`could not reach the hub: ${error.message}`);
