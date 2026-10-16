@@ -145,6 +145,20 @@ export class FakeDb implements GatewayDb {
     return t ? { equipmentId: t.equipmentId } : null;
   }
 
+  async releaseBoard(a: Parameters<GatewayDb["releaseBoard"]>[0]): Promise<boolean> {
+    this.check();
+    if (!this.devices.has(a.equipmentId)) return false;
+    for (const k of this.keys) {
+      if (k.equipmentId === a.equipmentId && k.kind === "gateway" && !k.revokedAt) {
+        k.revokedAt = new Date(this.now()).toISOString();
+        k.revokeReason = "released";
+        this.events.push({ equipmentId: a.equipmentId, keyId: k.keyId, event: "revoked", actor: a.actor, detail: { reason: "released" } });
+      }
+    }
+    this.devices.delete(a.equipmentId);
+    return true;
+  }
+
   async claimDevice(a: Parameters<GatewayDb["claimDevice"]>[0]): Promise<{ equipmentId: string; keyId: string; issuedTo: string | null }> {
     this.check();
     const t = this.open(a.ticket, a.hardwareId);

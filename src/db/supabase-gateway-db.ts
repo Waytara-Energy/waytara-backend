@@ -218,6 +218,10 @@ export class SupabaseGatewayDb implements GatewayDb {
     }
   }
 
+  async releaseBoard(a: Parameters<GatewayDb["releaseBoard"]>[0]): Promise<boolean> {
+    return (await this.call("gw_release_board", { p_equipment: a.equipmentId, p_actor: a.actor, p_ip: a.ip ?? null })) === true;
+  }
+
   async claimDevice(a: Parameters<GatewayDb["claimDevice"]>[0]): Promise<{ equipmentId: string; keyId: string; issuedTo: string | null }> {
     const row = this.rows(await this.call("gw_claim_device", { p_ticket: a.ticket, p_hardware_id: a.hardwareId, p_ciphertext: toHex(a.ciphertext), p_fingerprint: a.fingerprint, p_ip: a.ip ?? null }))[0];
     if (!row) throw new DbError("unavailable", "the claim returned nothing");

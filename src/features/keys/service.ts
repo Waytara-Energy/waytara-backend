@@ -116,6 +116,24 @@ export class KeyService {
     }
   }
 
+  /**
+   * Unlinks the monitoring unit from this equipment (and revokes its key) so the unit can be set up for another one. Whoever may make or revoke
+   * the equipment's keys may do it. `released` is false when no unit was linked.
+   */
+  async releaseBoard(actor: Actor, equipmentId: string): Promise<{ released: boolean }> {
+    try {
+      const info = await this.db.equipmentInfo(equipmentId);
+      if (!info) throw notFound();
+      if (!gatewayCategories(info.category)) throw badRequest("A charger has no monitoring unit to release");
+      await this.requireManage(actor, equipmentId);
+      const released = await this.db.releaseBoard({ equipmentId, actor: actor.id, ip: actor.ip });
+      if (released) this.bus?.changed(equipmentId); // the unit's connection is closed within seconds
+      return { released };
+    } catch (error) {
+      mapDb(error);
+    }
+  }
+
   /** A ticket the setup page hands to the board. Whoever may access the site may ask for one. */
   async issueClaimTicket(actor: Actor, equipmentId: string, hardwareId: string): Promise<{ ticket: string; expiresAt: string }> {
     try {

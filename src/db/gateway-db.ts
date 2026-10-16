@@ -62,5 +62,7 @@ export interface GatewayDb {
 
   issueClaimTicket(a: { equipmentId: string; issuedTo: string; hardwareId: string; ip?: string | null }): Promise<{ ticket: string; expiresAt: string }>;
   claimPeek(ticket: string, hardwareId: string): Promise<{ equipmentId: string } | null>;
+  /** Unlinks the monitoring unit from this equipment and revokes its key, so the unit can be set up for another equipment. False if no unit was linked. */
+  releaseBoard(a: { equipmentId: string; actor: string; ip?: string | null }): Promise<boolean>;
   claimDevice(a: { ticket: string; hardwareId: string; ciphertext: Buffer; fingerprint: string; ip?: string | null }): Promise<{ equipmentId: string; keyId: string; issuedTo: string | null }>;
 }

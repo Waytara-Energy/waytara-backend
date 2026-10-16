@@ -332,3 +332,50 @@ describe("readiness", () => {
     expect((await app.inject({ method: "GET", url: "/healthz" })).statusCode).toBe(200);
   });
 });
+
+describe("releasing a monitoring unit from its device", () => {
+  const release = (token: string | null, id = INVERTER) => post(`/v1/equipment/${id}/release`, token);
+
+  it("unlinks the unit and cuts its key off, for whoever may manage the device's keys", async () => {
+    db.devices.set(INVERTER, "AABBCCDDEEFF");
+    await post(`/v1/equipment/${INVERTER}/keys`, "tok-staff", { kind: "gateway" });
+    expect(await db.activeKeys(INVERTER)).toHaveLength(1);
+    const r = await release("tok-staff");
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toEqual({ released: true });
+    expect(db.devices.has(INVERTER)).toBe(false);
+    expect(await db.activeKeys(INVERTER)).toHaveLength(0);
+    expect(db.events.some((e) => e.event === "revoked" && e.actor === STAFF)).toBe(true);
+  });
+
+  it("says so when no unit was linked", async () => {
+    expect((await release("tok-admin")).json()).toEqual({ released: false });
+  });
+
+  it("gives 'not found' to everyone who may not manage the device, exactly as for something that does not exist", async () => {
+    db.devices.set(INVERTER, "AABBCCDDEEFF");
+    for (const t of ["tok-owner", "tok-stranger", "tok-other"]) expect((await release(t)).statusCode).toBe(404);
+    expect((await release("tok-admin", "00000000-0000-4000-8000-00000000dead")).statusCode).toBe(404);
+    expect(db.devices.has(INVERTER)).toBe(true); // nothing happened
+  });
+
+  it("needs a sign-in, and a charger has no unit to release", async () => {
+    expect((await release(null)).statusCode).toBe(401);
+    expect((await release("tok-admin", CHARGER)).statusCode).toBe(400);
+  });
+
+  it("hides a database outage behind a plain 503", async () => {
+    db.down = new DbError("unavailable", "db down");
+    expect((await release("tok-admin")).statusCode).toBe(503);
+  });
+
+  it("lets the unit be set up for another device afterwards", async () => {
+    db.devices.set(INVERTER, "AABBCCDDEEFF");
+    await release("tok-admin");
+    const second = "93000000-0000-4000-8000-000000000003";
+    db.addEquipment({ equipmentId: second, siteId: SITE, label: "Second inverter" });
+    db.manage.add(`${ADMIN}|${second}`);
+    const t = await post(`/v1/equipment/${second}/claim-tickets`, "tok-admin", { hardware_id: "AABBCCDDEEFF" });
+    expect(t.statusCode).toBe(201);
+  });
+});

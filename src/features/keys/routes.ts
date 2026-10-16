@@ -65,6 +65,12 @@ export async function registerKeyRoutes(app: FastifyInstance, service: KeyServic
     return { revoked: r.revoked };
   });
 
+  app.post("/v1/equipment/:id/release", { ...signedIn, config: limited(10) }, async (request) => {
+    const { id } = parse(idParam, request.params);
+    const r = await service.releaseBoard({ id: request.user!.id, ip: clientIp(request) }, id);
+    return { released: r.released };
+  });
+
   app.post("/v1/equipment/:id/claim-tickets", { ...signedIn, config: limited(20) }, async (request, reply) => {
     const { id } = parse(idParam, request.params);
     const body = parse(ticketBody, request.body);

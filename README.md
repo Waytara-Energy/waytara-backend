@@ -42,6 +42,7 @@ All under `/v1`. Everything except `/v1/claim` needs `Authorization: Bearer <Sup
 | `POST /v1/equipment/{id}/keys` `{kind, label?}` | admin, or staff assigned to the site | make a key; the secret is in the answer **once** |
 | `POST /v1/keys/{id}/rotate` `{grace_seconds?}` | same | replace a key; the old one stops now or after the grace period |
 | `DELETE /v1/keys/{id}` `{reason?}` | same | revoke a key |
+| `POST /v1/equipment/{id}/release` | same (whoever may make or revoke the device's keys) | unlink the monitoring unit from the device and cut its key off, so the unit can be set up for another device (`gw_release_board`; the history stays with the device) |
 | `POST /v1/equipment/{id}/claim-tickets` `{hardware_id}` | the site's owner, assigned staff, an admin | a single-use ticket (15 minutes) for one board |
 | `POST /v1/claim` `{ticket, hardware_id, board_public_key}` | the board itself (no sign-in) | the board collects its key, encrypted so only that board can read it |
 

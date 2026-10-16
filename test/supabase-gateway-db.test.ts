@@ -47,6 +47,15 @@ describe("SupabaseGatewayDb: what is sent", () => {
     });
   });
 
+  it("maps the release call, with the person who asked and no address when there is none", async () => {
+    const { c, calls } = client([ok(true), ok(false)]);
+    const db = new SupabaseGatewayDb(c);
+    expect(await db.releaseBoard({ equipmentId: EQ, actor: UUID, ip: "203.0.113.9" })).toBe(true);
+    expect(await db.releaseBoard({ equipmentId: EQ, actor: UUID })).toBe(false);
+    expect(calls[0]).toEqual({ fn: "gw_release_board", args: { p_equipment: EQ, p_actor: UUID, p_ip: "203.0.113.9" } });
+    expect(calls[1]!.args).toEqual({ p_equipment: EQ, p_actor: UUID, p_ip: null });
+  });
+
   it("maps the rotate, revoke, touch, event and ticket calls", async () => {
     const { c, calls } = client([ok("k2"), ok(true), ok(null), ok(null), ok([{ ticket: "t1", expires_at: "2026-10-15T07:00:00Z" }]), ok([{ equipment_id: EQ }]), ok([{ out_equipment_id: EQ, out_key_id: "k3", out_issued_to: UUID }])]);
     const db = new SupabaseGatewayDb(c);
