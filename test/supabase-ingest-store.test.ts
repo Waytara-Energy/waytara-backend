@@ -120,3 +120,34 @@ describe("reportHeartbeat", () => {
     });
   });
 });
+
+describe("settings write-back calls", () => {
+  it("lists what is waiting, checking the shape of the answer", async () => {
+    const { c, calls } = caller(() => [{ id: 7, key: "battery_shutdown_soc_pct", value: "20", by: "c1000000-0000-4000-8000-000000000001" }, { id: 8, key: "x", value: "1", by: null }]);
+    const p = await new SupabaseIngestStore(c).pendingWrites(EQ);
+    expect(calls).toEqual([{ fn: "gw_pending_writes", args: { p_equipment: EQ } }]);
+    expect(p).toEqual([{ id: 7, key: "battery_shutdown_soc_pct", value: "20", by: "c1000000-0000-4000-8000-000000000001" }, { id: 8, key: "x", value: "1", by: null }]);
+    await expect(new SupabaseIngestStore(caller(() => ({ not: "a list" })).c).pendingWrites(EQ)).rejects.toBeInstanceOf(DbError);
+  });
+
+  it("sends the rows with nulls for what is missing, and sends nothing for an empty list", async () => {
+    const { c, calls } = caller(() => 2);
+    const store = new SupabaseIngestStore(c);
+    expect(await store.reportSettings(EQ, [])).toBe(0);
+    expect(calls).toHaveLength(0);
+    expect(await store.reportSettings(EQ, [{ key_name: "k", setting_value: "5", source: "agent_write_failed", previous_value: "6", notes: "why" }, { key_name: "j", setting_value: "1", source: "agent_initial_read" }])).toBe(2);
+    expect(calls[0]).toEqual({
+      fn: "gw_report_settings",
+      args: { p_equipment: EQ, p_rows: [
+        { key_name: "k", setting_value: "5", source: "agent_write_failed", previous_value: "6", notes: "why", written_by: null },
+        { key_name: "j", setting_value: "1", source: "agent_initial_read", previous_value: null, notes: null, written_by: null },
+      ] },
+    });
+  });
+
+  it("reads the last value of each setting into a map", async () => {
+    const { c } = caller(() => [{ key: "a", value: "1", source: "agent_initial_read", id: 3 }, { key: "b", value: null }]);
+    const m = await new SupabaseIngestStore(c).lastSettings(EQ);
+    expect([...m]).toEqual([["a", "1"]]);
+  });
+});

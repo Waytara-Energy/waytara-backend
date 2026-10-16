@@ -2,7 +2,12 @@ import { z } from "zod";
 import type { BucketStats, ClosedBucket } from "../core/rollup.js";
 import type { MetricDef } from "../core/decode.js";
 import type { EquipmentProfile, HeartbeatReport, IngestStore, SummaryWrite } from "../features/ingest/store.js";
+import type { LiveStore } from "../features/ingest/live.js";
+import type { PendingWrite, SettingRow, SettingsStore } from "../features/ingest/settings.js";
 import { DbError } from "./gateway-db.js";
+
+const pendingDoc = z.array(z.object({ id: z.number().int(), key: z.string().min(1).max(120), value: z.string().max(200), by: z.string().uuid().nullable().optional() }));
+const lastDoc = z.array(z.object({ key: z.string().min(1).max(120), value: z.string().max(200).nullable() }));
 
 /**
  * The data intake's storage: calls the waytara.gw_* functions of migration 20261015020000 as the backend's service user.
@@ -51,7 +56,7 @@ const wireBucket = (b: BucketStats) => ({
   n: b.n,
 });
 
-export class SupabaseIngestStore implements IngestStore {
+export class SupabaseIngestStore implements IngestStore, SettingsStore, LiveStore {
   constructor(private readonly db: RpcCaller) {}
 
   async loadProfile(equipmentId: string): Promise<EquipmentProfile | null> {
@@ -114,6 +119,50 @@ export class SupabaseIngestStore implements IngestStore {
       p_upload_interval_s: h.uploadIntervalS ?? null,
       p_heartbeat_s: 10,
     });
+  }
+
+  // ---- settings write-back (migration 20261016020000)
+
+  async pendingWrites(equipmentId: string): Promise<PendingWrite[]> {
+    const data = await this.guard("gw_pending_writes", { p_equipment: equipmentId });
+    const parsed = pendingDoc.safeParse(data);
+    if (!parsed.success) throw new DbError("invalid", "the pending settings are not in the expected shape");
+    return parsed.data.map((p) => ({ id: p.id, key: p.key, value: p.value, by: p.by ?? null }));
+  }
+
+  async reportSettings(equipmentId: string, rows: SettingRow[]): Promise<number> {
+    if (rows.length === 0) return 0;
+    const n = await this.guard("gw_report_settings", {
+      p_equipment: equipmentId,
+      p_rows: rows.map((r) => ({
+        key_name: r.key_name,
+        setting_value: r.setting_value,
+        source: r.source,
+        previous_value: r.previous_value ?? null,
+        notes: r.notes ?? null,
+        written_by: r.written_by ?? null,
+      })),
+    });
+    return typeof n === "number" ? n : 0;
+  }
+
+  async lastSettings(equipmentId: string): Promise<Map<string, string>> {
+    const data = await this.guard("gw_last_settings", { p_equipment: equipmentId });
+    const parsed = lastDoc.safeParse(data);
+    if (!parsed.success) throw new DbError("invalid", "the last settings are not in the expected shape");
+    const out = new Map<string, string>();
+    for (const r of parsed.data) if (r.value !== null) out.set(r.key, r.value);
+    return out;
+  }
+
+  // ---- Go Live (migration 20261016030000)
+
+  async liveActive(equipmentId: string): Promise<boolean> {
+    return (await this.guard("gw_live_active", { p_equipment: equipmentId })) === true;
+  }
+
+  async liveTick(equipmentId: string, tMs: number, values: Record<string, number>): Promise<boolean> {
+    return (await this.guard("gw_live_tick", { p_equipment: equipmentId, p_t: Math.round(tMs), p_v: values })) === true;
   }
 
   /** An unknown equipment is not an outage: the caller gets the plain answer for it where there is one. */

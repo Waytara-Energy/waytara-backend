@@ -54,5 +54,10 @@ export const evtBody = z.object({
   fw_version: z.string().max(40).optional(),
   hardware_id: z.string().max(64).optional(),
   message: z.string().max(200).optional(),
+  // the answer to a "write" command (task A9): which command, whether the read-back matched, what the register held, why not
+  id: z.string().min(1).max(40).optional(),
+  ok: z.boolean().optional(),
+  readback: z.number().int().min(0).max(0xffff).optional(),
+  error: z.string().max(200).optional(),
 });
 export type EvtBody = z.infer<typeof evtBody>;

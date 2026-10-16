@@ -85,6 +85,8 @@ const schema = z
     GATEWAY_INGEST: asBoolean.default(true),
     /** false switches the EV charger (OCPP) server off */
     OCPP_ENABLED: asBoolean.default(true),
+    /** true lets the settings write-back change settings the catalogue does not mark as verified (default: refuse them) */
+    ALLOW_UNVERIFIED_WRITES: asBoolean.default(false),
     APP_VERSION: z.string().min(1).max(64).optional(),
     RENDER_GIT_COMMIT: z.string().min(7).max(64).optional(),
   })
@@ -137,6 +139,8 @@ export interface Config {
   gatewayIngest: boolean;
   /** the EV charger (OCPP) server runs (default); false is the off switch */
   ocppEnabled: boolean;
+  /** settings not marked verified may be written to the inverter (default false) */
+  allowUnverifiedWrites: boolean;
   /** present when the file store (Cloudflare R2) is set; cadence data is kept and served only then */
   r2?: { accountId: string; accessKeyId: string; secretAccessKey: string; bucket: string };
   version: string;
@@ -180,6 +184,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ...(e.KEY_ENCRYPTION_MASTER ? { keyMasters: { current: e.KEY_ENCRYPTION_MASTER, ...(e.KEY_ENCRYPTION_MASTER_PREVIOUS ? { previous: e.KEY_ENCRYPTION_MASTER_PREVIOUS } : {}) } } : {}),
     gatewayIngest: e.GATEWAY_INGEST,
     ocppEnabled: e.OCPP_ENABLED,
+    allowUnverifiedWrites: e.ALLOW_UNVERIFIED_WRITES,
     ...(e.R2_ACCOUNT_ID && e.R2_ACCESS_KEY_ID && e.R2_SECRET_ACCESS_KEY && e.R2_BUCKET
       ? { r2: { accountId: e.R2_ACCOUNT_ID, accessKeyId: e.R2_ACCESS_KEY_ID, secretAccessKey: e.R2_SECRET_ACCESS_KEY, bucket: e.R2_BUCKET } }
       : {}),

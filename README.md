@@ -15,9 +15,22 @@ Design and decisions: `docs/GATEWAY_ARCHITECTURE_V2.md` in the dashboard reposit
 | **A4c** storage in Supabase (`src/db/supabase-ingest-store.ts`), device status, broker on by default, simulated board | done, live |
 | **A5** cadence data in Cloudflare R2 (5-minute files, daily join), `GET /v1/reports/cadence` | done, live |
 | **B2/B3** OCPP 1.6-J server, EV sessions with the solar / battery / grid split, remote commands | done, live with a simulated charger; the real charger is next |
-| A7 setup page, A9 settings write-back, A11 cut-over and over-the-air update | later |
+| **A9** settings write-back: a changed setting is checked, sent to the unit as a sealed command, written with a read-back and recorded as confirmed or failed; the unit's own values are recorded too | hub and database done and tested without hardware (494 tests, 17 database checks); the board side is written and being built; not yet tried on the real inverter |
+| A11 cut-over and over-the-air update | later |
 
 The core libraries (`src/core`) are plain functions with no network or database; the runtime is built from them.
+
+## Settings write-back (A9)
+
+`src/features/ingest/settings.ts` (used by the data intake) keeps the settings log (`equipment_configs`) and the inverter in step. Every 5 seconds, for each board that is checking in, it asks the database for the settings people changed in the last 10 minutes (`gw_pending_writes`) and for each one:
+
+1. finds the setting on the unit's allow-list (the `writes` of its register map) and refuses it in plain words if it is not there, is not marked verified in the catalogue (unless `ALLOW_UNVERIFIED_WRITES=true`), is not a value the setting can hold, or is outside its range (`src/core/setting-value.ts` turns the text into the raw register value with the catalogue rule, and back again for the read-back);
+2. seals a command `{id, type: "write", key, reg, mask, raw, issued_at, expires_at}` on `dn/cmd` (valid for 45 seconds);
+3. waits for the board's `write_result` event (`{id, ok, readback, error}`), then records `agent_write_ok` (value = what was read back) or `agent_write_failed` (value = what the inverter still holds, previous value = what was asked, notes = why) through `gw_report_settings`. No answer after a minute is recorded as failed.
+
+The unit's own values are recorded as `agent_initial_read` at first sight and when a value changes by itself (a change on the inverter's screen), never while a request for that setting is waiting (the database refuses that too). Setting values come from the same frames as the other readings; nothing extra is polled. Settings that are not shown to the customer are never written. Migration `20261016020000_gateway_settings_writes.sql` in the dashboard repository holds the three database functions; the backend identity has no profile, so the function records the unit itself as the actor of the log row, as the old agent did.
+
+Not done here: settings that need special reading (HHMM times, the inverter clock, serial number) and settings spread over several registers.
 
 ## Endpoints (A4a)
 

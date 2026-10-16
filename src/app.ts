@@ -22,6 +22,12 @@ import { R2ObjectStore, type ObjectStore } from "./storage/object-store.js";
 import { registerBrokerRoute } from "./features/broker/routes.js";
 import { IngestService } from "./features/ingest/service.js";
 import type { IngestStore } from "./features/ingest/store.js";
+import type { LiveStore } from "./features/ingest/live.js";
+import type { SettingsStore } from "./features/ingest/settings.js";
+
+/** The settings write-back is on when the storage can list pending writes and record results (the Supabase store can). */
+const isLiveStore = (s: IngestStore): s is IngestStore & LiveStore => typeof (s as Partial<LiveStore>).liveActive === "function" && typeof (s as Partial<LiveStore>).liveTick === "function";
+const isSettingsStore = (s: IngestStore): s is IngestStore & SettingsStore => typeof (s as Partial<SettingsStore>).pendingWrites === "function" && typeof (s as Partial<SettingsStore>).reportSettings === "function";
 import { registerKeyRoutes } from "./features/keys/routes.js";
 import { KeyService } from "./features/keys/service.js";
 import { createSupabaseTokenVerifier, type TokenVerifier } from "./lib/jwt.js";
@@ -182,9 +188,11 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
         publish: (id, topic, payload, retain) => broker.publish(id, topic, payload, { retain }),
         log: app.log,
         onRejected: (id, reason) => recordFailure(id, null, reason),
+        ...(isSettingsStore(store) ? { settingsStore: store, allowUnverifiedWrites: config.allowUnverifiedWrites } : {}),
+        ...(isLiveStore(store) ? { liveStore: store } : {}),
       });
       ingest.current = service;
-      service.start();
+      service.start(2000);
       await registerBrokerRoute(app, broker);
       app.addHook("onClose", async () => {
         service.stop();

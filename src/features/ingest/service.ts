@@ -5,7 +5,10 @@ import { ReplayGuard, SealError, openWithAnyKey, seal } from "../../core/seal.js
 import { dnTopic, upTopic } from "../broker/topics.js";
 import type { KeyCache } from "../broker/key-cache.js";
 import type { CadenceWriter } from "../cadence/writer.js";
+import { formatDecoded } from "../../core/setting-value.js";
 import { dataBody, evtBody, hbBody, type DataBody } from "./schemas.js";
+import { LiveRelay, type LiveStore } from "./live.js";
+import { SettingsSync, type SettingsStore } from "./settings.js";
 import type { EquipmentProfile, IngestStore } from "./store.js";
 
 /**
@@ -33,6 +36,12 @@ export interface IngestDeps {
   cadence?: Pick<CadenceWriter, "add" | "tick" | "durableBeforeMs">;
   /** called (best effort) when a sealed message does not authenticate */
   onRejected?: (equipmentId: string, reason: string) => void;
+  /** the settings write-back (task A9); without it the unit's settings are only read, never written */
+  settingsStore?: SettingsStore;
+  /** write settings that the catalogue does not mark as verified (default: refuse them with a plain reason) */
+  allowUnverifiedWrites?: boolean;
+  /** Go Live (task A10): while somebody watches, readings are passed on to the dashboard's live channel; without it there is no live stream */
+  liveStore?: LiveStore;
 }
 
 const ACK_LAG_S = 120;
@@ -43,6 +52,8 @@ const FRAME_MAX_FUTURE_MS = 10 * 60_000;
 const HEARTBEAT_WRITE_EVERY_MS = 9_000;
 const MAP_REBUILD_AFTER_MS = 10 * 60_000;
 const RETRY_AFTER_FAILED_WRITE_MS = 30_000;
+/** a board that has not checked in for this long is not sent commands (it checks in every 10 s) */
+const BOARD_ALIVE_MS = 40_000;
 const EPOCH_2026 = Date.UTC(2026, 0, 1) / 1000;
 const SEEN_LIMIT = 5000;
 
@@ -53,6 +64,10 @@ interface Session {
   mapVersion: number;
   mapBuiltAt: number;
   readDefs: MetricDef[];
+  /** the settings the unit polls too (their values tell the settings log what the inverter holds) */
+  writeDefs: MetricDef[];
+  /** when the board last checked in (any heartbeat, written or not) */
+  lastHeartbeatAt: number;
   engine: RollupEngine;
   guard: ReplayGuard;
   latest: Map<string, { value: number; ts: number }>;
@@ -79,9 +94,23 @@ export class IngestService {
   private readonly shapeWarned = new Map<string, number>();
   private readonly now: () => number;
   private timer: NodeJS.Timeout | undefined;
+  private readonly settings: SettingsSync | undefined;
+  private readonly live: LiveRelay | undefined;
 
   constructor(private readonly d: IngestDeps) {
     this.now = d.now ?? Date.now;
+    if (d.settingsStore) {
+      this.settings = new SettingsSync({
+        store: d.settingsStore,
+        log: d.log,
+        now: this.now,
+        allowUnverified: d.allowUnverifiedWrites ?? false,
+        sendCommand: (equipmentId, body) => this.sendCommand(equipmentId, body),
+      });
+    }
+    if (d.liveStore) {
+      this.live = new LiveRelay({ store: d.liveStore, log: d.log, now: this.now, sendCommand: (equipmentId, body) => this.sendCommand(equipmentId, body) });
+    }
   }
 
   start(intervalMs = 5000): void {
@@ -151,13 +180,17 @@ export class IngestService {
       .filter((m) => m.direction === "read")
       .map((m) => ({ key: m.key, direction: "read", registers: m.registers, decode: m.decode, enumRef: m.enumRef, valueKind: m.valueKind, validMin: m.validMin, validMax: m.validMax, cadenceSeconds: m.cadence, showForUser: m.showForUser, verified: m.verified }));
 
+    const writeDefs: MetricDef[] = map.metrics
+      .filter((m) => m.direction === "write")
+      .map((m) => ({ key: m.key, direction: "write", registers: m.registers, decode: m.decode, enumRef: m.enumRef, valueKind: m.valueKind, validMin: m.validMin, validMax: m.validMax, cadenceSeconds: m.cadence, showForUser: m.showForUser, verified: m.verified }));
+
     if (existing) {
-      Object.assign(existing, { profile, map, mapVersion: version, mapBuiltAt: this.now(), readDefs });
+      Object.assign(existing, { profile, map, mapVersion: version, mapBuiltAt: this.now(), readDefs, writeDefs });
       return existing;
     }
     const nowS = this.now() / 1000;
     const s: Session = {
-      equipmentId, profile, map, mapVersion: version, mapBuiltAt: this.now(), readDefs,
+      equipmentId, profile, map, mapVersion: version, mapBuiltAt: this.now(), readDefs, writeDefs, lastHeartbeatAt: 0,
       engine: new RollupEngine(), guard: new ReplayGuard(), latest: new Map(), pending: new Map(), seen: new Set(), lastAck: new Map(),
       flushedBoundary: bucketStartOf(nowS), nextFlushAt: this.nextFlush(profile.uploadIntervalS, nowS),
       lastKeyRef: undefined, lastHbWrite: 0, lastHbInverterOnline: undefined, lastHbMapVer: undefined, lastMapPublish: 0, lastBoot: undefined, downCounter: 0, stats: emptyStats(),
@@ -201,6 +234,7 @@ export class IngestService {
     s.stats.batches++;
     s.lastBoot = body.boot;
     const nowMs = this.now();
+    const liveOn = this.live?.isActive(s.equipmentId) ?? false;
     let pendingForBoot = s.pending.get(body.boot);
     if (!pendingForBoot) s.pending.set(body.boot, (pendingForBoot = []));
 
@@ -222,6 +256,7 @@ export class IngestService {
       const words = new Map<number, number>();
       for (const [start, ws] of f.blocks) ws.forEach((w, i) => words.set(start + i, w));
       const tSec = f.t / 1000;
+      const liveValues: Record<string, number> = {};
       for (const def of s.readDefs) {
         if (!def.registers.every((r) => words.has(r))) continue;
         const r = decodeMetric(def, words);
@@ -235,8 +270,20 @@ export class IngestService {
           continue; // kept out of summaries and latest values: no false data
         }
         s.engine.add(def.key, tSec, r.value, def.cadenceSeconds);
+        if (liveOn && def.showForUser) liveValues[def.key] = r.value;
         const prev = s.latest.get(def.key);
         if (!prev || tSec >= prev.ts) s.latest.set(def.key, { value: r.value, ts: tSec });
+      }
+      if (liveOn && Object.keys(liveValues).length > 0) this.live?.onFrame(s.equipmentId, f.t, liveValues);
+      // the settings the unit polls: what the inverter holds, for the settings log
+      if (this.settings) {
+        for (const def of s.writeDefs) {
+          if (!def.registers.every((r) => words.has(r))) continue;
+          const r = decodeMetric(def, words);
+          if (!r.ok) continue;
+          const text = formatDecoded(r.value);
+          if (text !== null) this.settings.observe(s.equipmentId, def.key, text);
+        }
       }
     }
     pendingForBoot.sort((a, b) => a.seq - b.seq);
@@ -258,6 +305,7 @@ export class IngestService {
     if (!parsed.success) return this.wrongShape(s, "heartbeat", parsed.error.issues);
     const h = parsed.data;
     const nowMs = this.now();
+    s.lastHeartbeatAt = nowMs;
     const changed = h.inverter_online !== s.lastHbInverterOnline || h.map_ver !== s.lastHbMapVer;
     if (!changed && nowMs - s.lastHbWrite < HEARTBEAT_WRITE_EVERY_MS) return;
     s.lastHbWrite = nowMs;
@@ -287,11 +335,28 @@ export class IngestService {
     const e = parsed.data;
     this.d.log.info({ equipmentId: s.equipmentId, type: e.type, fw: e.fw_version, mapVer: e.map_ver }, "board event");
     if ((e.type === "hello" || e.type === "boot") && e.map_ver !== s.mapVersion) await this.publishMap(s, false);
+    if (e.type === "write_result" && this.settings && e.id) {
+      await this.settings.onResult({ equipmentId: s.equipmentId, map: s.map, boardAlive: true }, { id: e.id, ok: e.ok === true, readback: e.readback, error: e.error });
+    }
+  }
+
+  /** Seals a command for a board and publishes it. False when it could not be sent. */
+  private async sendCommand(equipmentId: string, body: Record<string, unknown>): Promise<boolean> {
+    const s = this.sessions.get(equipmentId);
+    if (!s) return false;
+    const msg = await this.sealDown(s, "cmd", body);
+    if (!msg) return false;
+    try {
+      await this.d.publish(equipmentId, dnTopic(equipmentId, "cmd"), msg, false);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   // ---- downlink
 
-  private async sealDown(s: Session, name: "ack" | "map", body: unknown): Promise<Buffer | null> {
+  private async sealDown(s: Session, name: "ack" | "map" | "cmd", body: unknown): Promise<Buffer | null> {
     const keys = await this.d.keys.get(s.equipmentId);
     const k = keys.find((x) => x.keyId === s.lastKeyRef) ?? keys[0];
     if (!k) return null;
@@ -335,6 +400,11 @@ export class IngestService {
     await this.d.cadence?.tick(nowMs).catch(() => undefined); // failures are logged by the writer and retried
     for (const s of this.sessions.values()) {
       if (nowMs >= s.nextFlushAt) await this.flush(s, nowMs);
+    }
+    for (const s of this.sessions.values()) {
+      const boardAlive = s.lastHeartbeatAt > 0 && nowMs - s.lastHeartbeatAt < BOARD_ALIVE_MS;
+      await this.live?.poll(s.equipmentId, boardAlive);
+      await this.settings?.poll({ equipmentId: s.equipmentId, map: s.map, boardAlive });
     }
   }
 
