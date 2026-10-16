@@ -129,6 +129,16 @@ describe("who may connect", () => {
     expect(ws.protocol).toBe("ocpp1.6");
   });
 
+  it("accepts the cleaned form of a key label that has spaces, as the admin page writes it into the address", async () => {
+    // the key is made with the device's name ("Plugzmart 7.4kW AC EV Charger"); the address carries "Plugzmart-7.4kW-AC-EV-Charger"
+    ev.keys = [{ ...ev.keys[0]!, label: "Plugzmart 7.4kW AC EV Charger" }];
+    bus.changed(EQ);
+    const ws = await open(`/ocpp/${SECRET}/Plugzmart-7.4kW-AC-EV-Charger`);
+    expect(ws.protocol).toBe("ocpp1.6");
+    // another name still does not work, and neither does the spaced form (an address cannot carry it)
+    await expect(open(`/ocpp/${SECRET}/Plugzmart-7.4kW-DC-EV-Charger`)).rejects.toMatchObject({ status: 404 });
+  });
+
   it("turns everything else away before the WebSocket starts, with the same plain answer", async () => {
     const attempts = [`/ocpp/${"x".repeat(24)}/${NAME}`, `/ocpp/${SECRET}/OTHER_NAME`, `/ocpp/${SECRET}/bad name!`, `/ocpp/short/${NAME}`, `/ocpp/${NAME}`];
     for (const a of attempts) await expect(open(a)).rejects.toMatchObject({ status: 404 });

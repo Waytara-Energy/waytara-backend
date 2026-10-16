@@ -21,6 +21,20 @@ interface Entry extends ChargerIdentity {
 
 const TTL_MS = 30_000;
 
+/**
+ * A label as it appears in a charger's address: the admin page cleans the device name the same way when it builds the address (spaces and
+ * other characters an address cannot carry become "-", dashes at the ends go, 40 characters at most), so "Plugzmart 7.4kW AC EV Charger"
+ * is typed into the charger as "Plugzmart-7.4kW-AC-EV-Charger". Keep this in step with chargerAddress in packages/cadence/src/keys.ts.
+ */
+export function addressName(label: string): string {
+  const dashed = label.trim().replace(/[^A-Za-z0-9_.-]+/g, "-");
+  let start = 0;
+  let end = dashed.length;
+  while (start < end && dashed[start] === "-") start++;
+  while (end > start && dashed[end - 1] === "-") end--;
+  return dashed.slice(start, end).slice(0, 40) || "charger";
+}
+
 export class ChargerRegistry {
   private entries: Entry[] = [];
   private loadedAt = 0;
@@ -74,7 +88,7 @@ export class ChargerRegistry {
     let found: Entry | null = null;
     for (const e of this.entries) {
       const same = e.secret.length === given.length && timingSafeEqual(e.secret, given);
-      if (same && (e.label === null || e.label === "" || e.label === chargePointId)) found = e; // no early exit: the time does not reveal which entry matched
+      if (same && (e.label === null || e.label === "" || e.label === chargePointId || addressName(e.label) === chargePointId)) found = e; // no early exit: the time does not reveal which entry matched
     }
     return found ? { equipmentId: found.equipmentId, keyId: found.keyId } : null;
   }
