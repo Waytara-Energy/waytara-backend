@@ -45,6 +45,8 @@ export const hbBody = z.object({
   clock_source: z.string().max(16).optional(),
   device_time_ms: z.number().int().min(0).optional(),
   reset_reason: z.string().max(40).optional(),
+  /** true while the board is answering from its built-in test inverter instead of reading the real one (bench tests only) */
+  simulated: z.boolean().optional(),
 });
 export type HbBody = z.infer<typeof hbBody>;
 

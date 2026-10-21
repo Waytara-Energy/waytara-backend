@@ -510,3 +510,29 @@ describe("cadence data is kept before the board is told", () => {
     expect(acksOf()[0]!.body).toEqual({ boot: 7, seq: 156 });
   });
 });
+
+describe("a board that answers from its test inverter", () => {
+  const hbBody = (over: Record<string, unknown> = {}) => ({ boot: 7, uptime_s: 100, inverter_online: true, map_ver: 1, clock_valid: true, device_time_ms: nowMs + 2000, fw_version: "2.0.1", rssi: -61, ...over });
+
+  it("has its readings discarded (never stored), and they are acknowledged so the board empties its queue", async () => {
+    nowMs = (S + 10) * 1000;
+    await svc.handleUp(EQ, "hb", sealUp("hb", hbBody({ simulated: true })));
+    await feed(7, S, S + 900);
+    nowMs = (S + 900) * 1000 + 3000;
+    await svc.tick(nowMs);
+    expect(store.writes).toHaveLength(0);
+    expect(store.allBuckets()).toHaveLength(0);
+  });
+
+  it("is stored again once it says it reads the real inverter", async () => {
+    nowMs = (S + 10) * 1000;
+    await svc.handleUp(EQ, "hb", sealUp("hb", hbBody({ simulated: true })));
+    nowMs = (S + 20) * 1000;
+    await svc.handleUp(EQ, "hb", sealUp("hb", hbBody({ uptime_s: 110 }))); // no flag: real again
+    await feed(7, S, S + 900);
+    nowMs = (S + 900) * 1000 + 3000;
+    await svc.tick(nowMs);
+    expect(store.writes.length).toBeGreaterThan(0);
+    expect(bucketOf("pv1_power_w", S)).toBeTruthy();
+  });
+});

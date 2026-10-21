@@ -82,11 +82,13 @@ interface Session {
   lastHbMapVer: number | undefined;
   lastMapPublish: number;
   lastBoot: number | undefined;
+  /** the board said, in its last heartbeat, that it is answering from its test inverter: its readings are made up and are not stored */
+  simulated: boolean;
   downCounter: number;
-  stats: Record<"batches" | "frames" | "duplicates" | "droppedTime" | "outOfRange" | "undecodable" | "rejected" | "flushes" | "flushFailures", number>;
+  stats: Record<"batches" | "frames" | "duplicates" | "droppedTime" | "droppedSimulated" | "outOfRange" | "undecodable" | "rejected" | "flushes" | "flushFailures", number>;
 }
 
-const emptyStats = (): Session["stats"] => ({ batches: 0, frames: 0, duplicates: 0, droppedTime: 0, outOfRange: 0, undecodable: 0, rejected: 0, flushes: 0, flushFailures: 0 });
+const emptyStats = (): Session["stats"] => ({ batches: 0, frames: 0, duplicates: 0, droppedTime: 0, droppedSimulated: 0, outOfRange: 0, undecodable: 0, rejected: 0, flushes: 0, flushFailures: 0 });
 
 export class IngestService {
   private readonly sessions = new Map<string, Session>();
@@ -193,7 +195,7 @@ export class IngestService {
       equipmentId, profile, map, mapVersion: version, mapBuiltAt: this.now(), readDefs, writeDefs, lastHeartbeatAt: 0,
       engine: new RollupEngine(), guard: new ReplayGuard(), latest: new Map(), pending: new Map(), seen: new Set(), lastAck: new Map(),
       flushedBoundary: bucketStartOf(nowS), nextFlushAt: this.nextFlush(profile.uploadIntervalS, nowS),
-      lastKeyRef: undefined, lastHbWrite: 0, lastHbInverterOnline: undefined, lastHbMapVer: undefined, lastMapPublish: 0, lastBoot: undefined, downCounter: 0, stats: emptyStats(),
+      lastKeyRef: undefined, lastHbWrite: 0, lastHbInverterOnline: undefined, lastHbMapVer: undefined, lastMapPublish: 0, lastBoot: undefined, simulated: false, downCounter: 0, stats: emptyStats(),
     };
     this.sessions.set(equipmentId, s);
     return s;
@@ -248,6 +250,11 @@ export class IngestService {
       pendingForBoot.push({ seq: f.seq, t: f.t });
       if (f.t > nowMs + FRAME_MAX_FUTURE_MS || f.t < nowMs - FRAME_MAX_AGE_MS) {
         s.stats.droppedTime++;
+        continue;
+      }
+      // made-up readings never reach the history, the dashboards or the live view; they are still acknowledged so the board empties its queue
+      if (s.simulated) {
+        s.stats.droppedSimulated++;
         continue;
       }
       s.stats.frames++;
@@ -306,6 +313,12 @@ export class IngestService {
     const h = parsed.data;
     const nowMs = this.now();
     s.lastHeartbeatAt = nowMs;
+    const simulated = h.simulated === true;
+    if (simulated !== s.simulated) {
+      s.simulated = simulated;
+      if (simulated) this.d.log.warn({ equipmentId: s.equipmentId }, "the board is answering from its test inverter: its readings are being discarded");
+      else this.d.log.info({ equipmentId: s.equipmentId }, "the board reads the real inverter again");
+    }
     const changed = h.inverter_online !== s.lastHbInverterOnline || h.map_ver !== s.lastHbMapVer;
     if (!changed && nowMs - s.lastHbWrite < HEARTBEAT_WRITE_EVERY_MS) return;
     s.lastHbWrite = nowMs;
