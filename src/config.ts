@@ -87,6 +87,8 @@ const schema = z
     OCPP_ENABLED: asBoolean.default(true),
     /** true lets the settings write-back change settings the catalogue does not mark as verified (default: refuse them) */
     ALLOW_UNVERIFIED_WRITES: asBoolean.default(false),
+    /** the shared secret of the database's 10-second call (POST /v1/internal/tick); unset switches that call off (the route answers 404) */
+    HUB_TICK_SECRET: z.string().min(16).max(200).optional(),
     APP_VERSION: z.string().min(1).max(64).optional(),
     RENDER_GIT_COMMIT: z.string().min(7).max(64).optional(),
   })
@@ -141,6 +143,8 @@ export interface Config {
   ocppEnabled: boolean;
   /** settings not marked verified may be written to the inverter (default false) */
   allowUnverifiedWrites: boolean;
+  /** the shared secret of the database's 10-second tick call; undefined = the tick route is off */
+  hubTickSecret?: string;
   /** present when the file store (Cloudflare R2) is set; cadence data is kept and served only then */
   r2?: { accountId: string; accessKeyId: string; secretAccessKey: string; bucket: string };
   version: string;
@@ -185,6 +189,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     gatewayIngest: e.GATEWAY_INGEST,
     ocppEnabled: e.OCPP_ENABLED,
     allowUnverifiedWrites: e.ALLOW_UNVERIFIED_WRITES,
+    ...(e.HUB_TICK_SECRET ? { hubTickSecret: e.HUB_TICK_SECRET } : {}),
     ...(e.R2_ACCOUNT_ID && e.R2_ACCESS_KEY_ID && e.R2_SECRET_ACCESS_KEY && e.R2_BUCKET
       ? { r2: { accountId: e.R2_ACCOUNT_ID, accessKeyId: e.R2_ACCESS_KEY_ID, secretAccessKey: e.R2_SECRET_ACCESS_KEY, bucket: e.R2_BUCKET } }
       : {}),

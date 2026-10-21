@@ -36,7 +36,7 @@ import { registerAuth } from "./plugins/auth.js";
 import { Readiness } from "./lib/readiness.js";
 import { buildLoggerOptions } from "./logger.js";
 import { registerSecurity, requestIdFrom } from "./plugins/security.js";
-import { registerHealthRoutes } from "./routes/health.js";
+import { registerHealthRoutes, type HubStatus } from "./routes/health.js";
 import { registerSpeedtestRoutes } from "./routes/speedtest.js";
 
 declare module "fastify" {
@@ -96,7 +96,8 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
   app.decorate("config", config);
 
   await registerSecurity(app, config);
-  await registerHealthRoutes(app, config, readiness);
+  const hubStatus: HubStatus = { boardsConnected: () => null };
+  await registerHealthRoutes(app, config, readiness, hubStatus);
   await registerSpeedtestRoutes(app);
 
   const db = options.deps?.db ?? (config.supabase ? createSupabaseGatewayDb(config.supabase) : undefined);
@@ -168,6 +169,7 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
         onLogin: (_id, keyId, ip) => touchKey(keyId, ip),
       });
       await broker.start();
+      hubStatus.boardsConnected = () => broker.connectedEquipment().filter((id) => broker.isConnected(id)).length;
       const cadence = objectStore ? new CadenceWriter({ store: objectStore, log: app.log }) : undefined;
       const archive = objectStore ? new CadenceArchive(objectStore, app.log) : undefined;
       if (objectStore && archive && cadence) {
