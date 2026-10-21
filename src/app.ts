@@ -21,6 +21,7 @@ import { CadenceWriter } from "./features/cadence/writer.js";
 import { R2ObjectStore, type ObjectStore } from "./storage/object-store.js";
 import { registerBrokerRoute } from "./features/broker/routes.js";
 import { registerIntervalRoutes } from "./features/ingest/interval-routes.js";
+import { registerReadRateRoutes } from "./features/ingest/read-rate-routes.js";
 import { registerLiveWakeRoutes } from "./features/ingest/live-routes.js";
 import { registerBleGrantRoutes } from "./features/keys/ble-grant-routes.js";
 import { RotationService } from "./features/keys/rotation.js";
@@ -206,6 +207,7 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
       ingest.current = service;
       service.start(2000);
       await registerIntervalRoutes(app, { db, reload: (equipmentId) => service.reloadProfile(equipmentId) });
+      await registerReadRateRoutes(app, { db, reload: (equipmentId) => service.reloadProfile(equipmentId) });
       await registerBleGrantRoutes(app, { db, keys });
       await registerLiveWakeRoutes(app, { db, wake: (equipmentId) => service.wakeLive(equipmentId) });
       rotation.current = new RotationService(db, vault, { status: (id) => service.unitStatus(id), command: (id, body) => service.command(id, body) }, bus);

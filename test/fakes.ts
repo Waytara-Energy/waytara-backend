@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { DbError, type ActiveKey, type EquipmentInfo, type GatewayDb, type KeyEvent, type KeyInfo, type KeyKind } from "../src/db/gateway-db.js";
+import { DbError, type ActiveKey, type CadenceList, type CadenceMetric, type EquipmentInfo, type GatewayDb, type KeyEvent, type KeyInfo, type KeyKind } from "../src/db/gateway-db.js";
 
 /** An in-memory stand-in for the database that behaves like the gw_* functions (see the SQL tests for the real rules). */
 export interface FakeKey {
@@ -236,6 +236,33 @@ export class FakeDb implements GatewayDb {
   async getPushInterval(a: Parameters<GatewayDb["getPushInterval"]>[0]): Promise<number | null> {
     this.check();
     return this.manage.has(`${a.actor}|${a.equipmentId}`) ? (this.intervals.get(a.equipmentId) ?? 900) : null;
+  }
+
+  cadences = new Map<string, CadenceMetric[]>();
+
+  async getCadences(a: Parameters<GatewayDb["getCadences"]>[0]): Promise<CadenceList | null> {
+    this.check();
+    if (!this.manage.has(`${a.actor}|${a.equipmentId}`)) return null;
+    return { allowed: [10, 15, 30, 60, 120, 300, 600, 900], default: 30, metrics: this.cadences.get(a.equipmentId) ?? [] };
+  }
+
+  async setCadences(a: Parameters<GatewayDb["setCadences"]>[0]): Promise<{ changed: number }> {
+    this.check();
+    if (!this.manage.has(`${a.actor}|${a.equipmentId}`)) throw new DbError("forbidden", "not allowed");
+    const list = this.cadences.get(a.equipmentId) ?? [];
+    let changed = 0;
+    for (const c of a.changes) {
+      if (c.seconds !== null && ![10, 15, 30, 60, 120, 300, 600, 900].includes(c.seconds)) throw new DbError("invalid", "not an allowed rate");
+      const m = list.find((x) => x.key === c.key);
+      if (!m) throw new DbError("invalid", "unknown value");
+      const to = c.seconds ?? m.map_s;
+      if (to !== m.seconds) {
+        m.seconds = to;
+        m.custom = to !== m.map_s;
+        changed++;
+      }
+    }
+    return { changed };
   }
 
   async setPushInterval(a: Parameters<GatewayDb["setPushInterval"]>[0]): Promise<{ previous: number; seconds: number }> {

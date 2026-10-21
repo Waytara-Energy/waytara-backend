@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { DbError, type ActiveKey, type EquipmentInfo, type GatewayDb, type KeyInfo, type KeyKind } from "./gateway-db.js";
+import { DbError, type ActiveKey, type CadenceList, type EquipmentInfo, type GatewayDb, type KeyInfo, type KeyKind } from "./gateway-db.js";
 
 /**
  * The real database layer: calls the waytara.gw_* functions through Supabase's API, signed in as the backend's service user.
@@ -225,6 +225,16 @@ export class SupabaseGatewayDb implements GatewayDb {
   async getPushInterval(a: Parameters<GatewayDb["getPushInterval"]>[0]): Promise<number | null> {
     const r = await this.call("gw_get_push_interval", { p_actor: a.actor, p_equipment: a.equipmentId });
     return typeof r === "number" ? r : null;
+  }
+
+  async getCadences(a: Parameters<GatewayDb["getCadences"]>[0]): Promise<CadenceList | null> {
+    const r = (await this.call("gw_list_cadences", { p_actor: a.actor, p_equipment: a.equipmentId })) as CadenceList | null;
+    return r && Array.isArray(r.metrics) ? r : null;
+  }
+
+  async setCadences(a: Parameters<GatewayDb["setCadences"]>[0]): Promise<{ changed: number }> {
+    const r = (await this.call("gw_set_cadences", { p_equipment: a.equipmentId, p_actor: a.actor, p_changes: a.changes, p_ip: a.ip ?? null })) as { changed?: number } | null;
+    return { changed: Number(r?.changed ?? 0) };
   }
 
   async bleAccess(a: Parameters<GatewayDb["bleAccess"]>[0]): Promise<"network" | "service" | "admin" | null> {

@@ -557,6 +557,22 @@ describe("a changed push interval", () => {
   });
 });
 
+describe("changed read rates", () => {
+  it("make a new register map version that is sent to the running unit at once; a change that leaves the map as it was sends nothing", async () => {
+    await svc.handleReady(EQ);
+    expect(svc.mapVersion(EQ)).toBe(1);
+    published = [];
+    store.profile!.metrics = store.profile!.metrics.map((m) => (m.key === "battery_power_w" ? { ...m, cadenceSeconds: 10 } : m));
+    await svc.reloadProfile(EQ);
+    expect(svc.mapVersion(EQ)).toBe(2);
+    expect(published.filter((p) => p.topic === dnTopic(EQ, "map"))).toHaveLength(1);
+    published = [];
+    await svc.reloadProfile(EQ);
+    expect(svc.mapVersion(EQ)).toBe(2);
+    expect(published.filter((p) => p.topic === dnTopic(EQ, "map"))).toHaveLength(0);
+  });
+});
+
 describe("the latest values between the pushes of the averaged figures (T12)", () => {
   const latestWrites = () => store.writes.filter((w) => w.buckets.length === 0 && w.latest.length > 0);
 

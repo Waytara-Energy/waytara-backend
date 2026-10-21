@@ -42,6 +42,24 @@ export class DbError extends Error {
   }
 }
 
+export interface CadenceMetric {
+  key: string;
+  label: string;
+  unit: string | null;
+  category: string;
+  registers: number[];
+  /** the rate in force, in seconds */
+  seconds: number;
+  /** the rate the register map was made with */
+  map_s: number;
+  custom: boolean;
+}
+export interface CadenceList {
+  allowed: number[];
+  default: number;
+  metrics: CadenceMetric[];
+}
+
 export interface GatewayDb {
   /** Proves the sign-in and the function permission work. Throws if not. */
   ping(): Promise<void>;
@@ -68,6 +86,10 @@ export interface GatewayDb {
   getPushInterval(a: { actor: string; equipmentId: string }): Promise<number | null>;
   /** Changes it (60, 120, 300, 600, 900, 1800 or 3600 seconds) and records who did it; returns the previous value. */
   setPushInterval(a: { equipmentId: string; actor: string; seconds: number; ip?: string | null }): Promise<{ previous: number; seconds: number }>;
+  /** The values of this unit that are read from the inverter, with the rate each is read at and the rate the register map was made with; null when the person may not manage the unit. */
+  getCadences(a: { actor: string; equipmentId: string }): Promise<CadenceList | null>;
+  /** Sets the read rate of values (null puts back the rate of the register map) and records who did it; returns how many really changed. */
+  setCadences(a: { equipmentId: string; actor: string; changes: { key: string; seconds: number | null }[]; ip?: string | null }): Promise<{ changed: number }>;
   /** Which level of Bluetooth access this person gets for this unit (admin, service, network), or null for none. Recorded in the activity log. */
   bleAccess(a: { actor: string; equipmentId: string; ip?: string | null }): Promise<"network" | "service" | "admin" | null>;
   /** Replaces a unit's key without cutting it off: makes the new key (both are valid side by side) and starts a rotation. Throws "conflict" if one is already open. */
