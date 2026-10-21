@@ -54,6 +54,8 @@ const FRAME_MAX_FUTURE_MS = 10 * 60_000;
 const HEARTBEAT_WRITE_EVERY_MS = 9_000;
 const MAP_REBUILD_AFTER_MS = 10 * 60_000;
 const RETRY_AFTER_FAILED_WRITE_MS = 30_000;
+/** The latest values reach the database this often, between the (slower) pushes of the averaged figures: the dashboards stay close to the unit. */
+const LATEST_EVERY_MS = 30_000;
 /** a board that has not checked in for this long is not sent commands (it checks in every 10 s) */
 const BOARD_ALIVE_MS = 40_000;
 const EPOCH_2026 = Date.UTC(2026, 0, 1) / 1000;
@@ -78,6 +80,9 @@ interface Session {
   lastAck: Map<number, number>;
   flushedBoundary: number;
   nextFlushAt: number;
+  /** when the latest values are next pushed on their own (T12), and the newest reading time already pushed for each value */
+  nextLatestAt: number;
+  latestSentTs: Map<string, number>;
   lastKeyRef: string | undefined;
   lastHbWrite: number;
   lastHbInverterOnline: boolean | undefined;
@@ -208,7 +213,7 @@ export class IngestService {
     const s: Session = {
       equipmentId, profile, map, mapVersion: version, mapBuiltAt: this.now(), readDefs, writeDefs, lastHeartbeatAt: 0,
       engine: new RollupEngine(), guard: new ReplayGuard(), latest: new Map(), pending: new Map(), seen: new Set(), lastAck: new Map(),
-      flushedBoundary: bucketStartOf(nowS), nextFlushAt: this.nextFlush(profile.uploadIntervalS, nowS),
+      flushedBoundary: bucketStartOf(nowS), nextFlushAt: this.nextFlush(profile.uploadIntervalS, nowS), nextLatestAt: 0, latestSentTs: new Map<string, number>(),
       lastKeyRef: undefined, lastHbWrite: 0, lastHbInverterOnline: undefined, lastHbMapVer: undefined, lastMapPublish: 0, lastBoot: undefined, simulated: false, caps: new Set<string>(), downCounter: 0, stats: emptyStats(),
     };
     this.sessions.set(equipmentId, s);
@@ -443,9 +448,37 @@ export class IngestService {
       if (nowMs >= s.nextFlushAt) await this.flush(s, nowMs);
     }
     for (const s of this.sessions.values()) {
+      if (nowMs >= s.nextLatestAt) await this.pushLatest(s, nowMs);
+    }
+    for (const s of this.sessions.values()) {
       const boardAlive = s.lastHeartbeatAt > 0 && nowMs - s.lastHeartbeatAt < BOARD_ALIVE_MS;
       await this.live?.poll(s.equipmentId, boardAlive);
       await this.settings?.poll({ equipmentId: s.equipmentId, map: s.map, boardAlive });
+    }
+  }
+
+  /**
+   * The latest values on their own rhythm (task T12): between two pushes of the averaged figures (the push interval, 15 minutes by default)
+   * the values that changed since the last push go to the database every 30 seconds, with the running figures of the unfinished bucket, in
+   * the same write the dashboards already listen to. So an open dashboard is never more than about 30 seconds behind the unit without Go
+   * Live. Nothing is cleared here: the regular flush still writes everything and the closed buckets. A unit pushed at 60 seconds or faster
+   * needs no extra pushes. A failed push is simply tried again at the next round and never delays the regular flush.
+   */
+  private async pushLatest(session: Session, nowMs: number): Promise<void> {
+    session.nextLatestAt = nowMs + LATEST_EVERY_MS;
+    if (session.profile.uploadIntervalS <= 60) return;
+    const changed = [...session.latest].filter(([key, v]) => v.ts > (session.latestSentTs.get(key) ?? 0));
+    if (changed.length === 0) return;
+    try {
+      await this.d.store.writeSummaries({
+        equipmentId: session.equipmentId,
+        buckets: [],
+        open: session.engine.openAll(nowMs / 1000),
+        latest: changed.map(([key, v]) => ({ key, value: v.value, ts: v.ts })),
+      });
+      for (const [key, v] of changed) session.latestSentTs.set(key, v.ts);
+    } catch (error) {
+      this.d.log.warn({ equipmentId: session.equipmentId, err: error instanceof Error ? error.message : String(error) }, "pushing the latest values failed, will retry");
     }
   }
 
@@ -466,6 +499,8 @@ export class IngestService {
       this.d.log.warn({ equipmentId: session.equipmentId, err: error instanceof Error ? error.message : String(error) }, "writing summaries failed, will retry");
       return;
     }
+    for (const [key, v] of session.latest) session.latestSentTs.set(key, v.ts); // the regular write carried them all
+    session.nextLatestAt = nowMs + LATEST_EVERY_MS;
     session.latest.clear();
     session.stats.flushes++;
     session.flushedBoundary = bucketStartOf(nowS);

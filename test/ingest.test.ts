@@ -110,11 +110,12 @@ describe("data becomes finished buckets", () => {
     expect(store.writes[0]!.latest.find((l) => l.key === "day_pv_energy_kwh")!.value).toBeCloseTo(12.3, 6);
   });
 
-  it("does not write before the upload interval is due", async () => {
+  it("does not write finished buckets before the upload interval is due (only the 30-second latest values go out)", async () => {
     await feed(7, S, S + 600);
     nowMs = (S + 899) * 1000;
     await svc.tick(nowMs);
-    expect(store.writes).toHaveLength(0);
+    expect(store.writes.flatMap((w) => w.buckets)).toHaveLength(0);
+    expect(acksOf()).toHaveLength(0); // nothing is acknowledged by a latest-values push
   });
 
   it("keeps a value that is out of range out of the summaries and the latest values", async () => {
@@ -245,14 +246,15 @@ describe("a storage failure loses nothing", () => {
     await feed(7, S, S + 900);
     store.failWrites = 1;
     nowMs = (S + 900) * 1000 + 3000;
+    const closedWrites = () => store.writes.filter((w) => w.buckets.length > 0);
     await svc.tick(nowMs);
-    expect(store.writes).toHaveLength(0);
+    expect(closedWrites()).toHaveLength(0);
     expect(svc.stats(EQ)!.flushFailures).toBe(1);
     expect(acksOf()).toHaveLength(0); // nothing may be acknowledged that is not stored
     await svc.tick(nowMs + 10_000); // too early: the retry is 30 s later
-    expect(store.writes).toHaveLength(0);
+    expect(closedWrites()).toHaveLength(0);
     await svc.tick(nowMs + 31_000);
-    expect(store.writes).toHaveLength(1);
+    expect(closedWrites()).toHaveLength(1);
     expect(bucketOf("pv1_power_w", S)).toMatchObject({ covered: 900, n: 180 });
     expect(acksOf().length).toBeGreaterThan(0);
   });
@@ -552,5 +554,66 @@ describe("a changed push interval", () => {
 
   it("does nothing for a unit that is not connected (its next start reads the database)", async () => {
     await expect(svc.reloadProfile("00000000-0000-4000-8000-0000000000ff")).resolves.toBeUndefined();
+  });
+});
+
+describe("the latest values between the pushes of the averaged figures (T12)", () => {
+  const latestWrites = () => store.writes.filter((w) => w.buckets.length === 0 && w.latest.length > 0);
+
+  it("go to the database every 30 seconds, with the running figures, before the 15-minute push is due", async () => {
+    await feed(7, S, S + 120);
+    nowMs = (S + 120) * 1000 + 3000;
+    await svc.tick(nowMs);
+    expect(latestWrites()).toHaveLength(1);
+    const w = latestWrites()[0]!;
+    expect(w.latest.find((l) => l.key === "pv1_power_w")).toMatchObject({ value: 100 });
+    expect(w.open.length).toBeGreaterThan(0); // the running figures of the unfinished bucket go with them
+    expect(acksOf()).toHaveLength(0); // and acknowledge nothing: only the regular write stores the readings for good
+  });
+
+  it("send only what changed, and not more often than every 30 seconds", async () => {
+    await feed(7, S, S + 120);
+    nowMs = (S + 120) * 1000 + 3000;
+    await svc.tick(nowMs);
+    await svc.tick(nowMs + 10_000); // too soon
+    expect(latestWrites()).toHaveLength(1);
+    await svc.tick(nowMs + 31_000); // due, but nothing new arrived
+    expect(latestWrites()).toHaveLength(1);
+    await feed(7, S + 120, S + 180, 25, { pv: 555 }); // new readings
+    await svc.tick(nowMs + 62_000);
+    expect(latestWrites()).toHaveLength(2);
+    expect(latestWrites()[1]!.latest.find((l) => l.key === "pv1_power_w")).toMatchObject({ value: 555 });
+  });
+
+  it("do not replace the regular write: the 15-minute push still carries every latest value and the closed buckets", async () => {
+    await feed(7, S, S + 900);
+    nowMs = (S + 900) * 1000 + 3000;
+    await svc.tick(nowMs);
+    const regular = store.writes.find((w) => w.buckets.length > 0)!;
+    expect(regular.latest.some((l) => l.key === "pv1_power_w")).toBe(true);
+    expect(bucketOf("pv1_power_w", S)).toMatchObject({ covered: 900, n: 180 });
+    expect(acksOf().length).toBeGreaterThan(0);
+  });
+
+  it("are tried again at the next round when the database is down, and never hold the regular write back", async () => {
+    await feed(7, S, S + 120);
+    nowMs = (S + 120) * 1000 + 3000;
+    store.failWrites = 1;
+    await svc.tick(nowMs);
+    expect(latestWrites()).toHaveLength(0);
+    await svc.tick(nowMs + 31_000);
+    expect(latestWrites()).toHaveLength(1);
+  });
+
+  it("are not sent separately when the unit is pushed every minute or faster (the regular write already is that often)", async () => {
+    store.profile = { ...store.profile!, uploadIntervalS: 60 };
+    svc = mk();
+    await feed(7, S, S + 120);
+    nowMs = (S + 120) * 1000 + 3000;
+    await svc.tick(nowMs);
+    // this unit is written by the regular flush every minute: no extra latest-only push is added on top of it
+    const before = store.writes.length;
+    await svc.tick(nowMs + 31_000);
+    expect(store.writes.length).toBe(before);
   });
 });
