@@ -227,6 +227,11 @@ export class SupabaseGatewayDb implements GatewayDb {
     return typeof r === "number" ? r : null;
   }
 
+  async bleAccess(a: Parameters<GatewayDb["bleAccess"]>[0]): Promise<"network" | "service" | "admin" | null> {
+    const r = await this.call("gw_ble_access", { p_actor: a.actor, p_equipment: a.equipmentId, p_ip: a.ip ?? null });
+    return r === "network" || r === "service" || r === "admin" ? r : null;
+  }
+
   async setPushInterval(a: Parameters<GatewayDb["setPushInterval"]>[0]): Promise<{ previous: number; seconds: number }> {
     const r = (await this.call("gw_set_push_interval", { p_equipment: a.equipmentId, p_actor: a.actor, p_seconds: a.seconds, p_ip: a.ip ?? null })) as { previous?: number; seconds?: number } | null;
     return { previous: Number(r?.previous ?? 900), seconds: Number(r?.seconds ?? a.seconds) };

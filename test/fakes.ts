@@ -221,6 +221,16 @@ export class FakeDb implements GatewayDb {
     return r ? { rotationId: r.id, state: r.state as "sent" | "staged", startedAt: r.startedAt, expiresAt: r.expiresAt } : null;
   }
 
+  /** `${actor}|${equipmentId}` -> the Bluetooth level that person gets */
+  ble = new Map<string, "network" | "service" | "admin">();
+  bleRequests: { actor: string; equipmentId: string }[] = [];
+  async bleAccess(a: { actor: string; equipmentId: string }): Promise<"network" | "service" | "admin" | null> {
+    this.check();
+    const l = this.ble.get(`${a.actor}|${a.equipmentId}`) ?? null;
+    if (l) this.bleRequests.push({ actor: a.actor, equipmentId: a.equipmentId });
+    return l;
+  }
+
   intervals = new Map<string, number>();
 
   async getPushInterval(a: Parameters<GatewayDb["getPushInterval"]>[0]): Promise<number | null> {

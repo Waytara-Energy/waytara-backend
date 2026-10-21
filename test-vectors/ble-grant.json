@@ -1,0 +1,31 @@
+{
+  "about": "The Bluetooth grant: payload = version(1)=1 level(1) expires(4, big endian unix seconds) pubHash(8) equipmentId(16) userId(16); grant = payload + first 16 bytes of HMAC-SHA-256(grantKey, payload); grantKey = HMAC-SHA-256(equipment key, 'wt-ble-grant-key/v1'); pubHash = first 8 bytes of SHA-256(the unit's 65-byte public key for the connection). Levels: 1 view, 2 network, 3 service, 4 admin.",
+  "equipmentKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "grantKeyHex": "215779b54c43a9264171608e7e4018b085b23ca2a804e614030afe288e35586a",
+  "equipmentId": "b4c30eb8-fba4-4487-aa7a-3c1b089e36e2",
+  "devicePublicKeyHex": "04030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bc",
+  "pubHashHex": "fb419516cc0cf6ae",
+  "cases": [
+    {
+      "name": "customer, network level",
+      "level": "network",
+      "userId": "c1000000-0000-4000-8000-000000000001",
+      "expiresAtS": 1792044120,
+      "grantHex": "01026ad06c58fb419516cc0cf6aeb4c30eb8fba44487aa7a3c1b089e36e2c1000000000040008000000000000001124befcb2bfa40b75be45bf0300422dc"
+    },
+    {
+      "name": "engineer, service level",
+      "level": "service",
+      "userId": "e1000000-0000-4000-8000-000000000002",
+      "expiresAtS": 1792044120,
+      "grantHex": "01036ad06c58fb419516cc0cf6aeb4c30eb8fba44487aa7a3c1b089e36e2e1000000000040008000000000000002e7f386f1354de3f4641a7edce61b8e04"
+    },
+    {
+      "name": "admin",
+      "level": "admin",
+      "userId": "a0000000-0000-4000-8000-000000000003",
+      "expiresAtS": 1792044120,
+      "grantHex": "01046ad06c58fb419516cc0cf6aeb4c30eb8fba44487aa7a3c1b089e36e2a000000000004000800000000000000343e9a725aba9843072f32cad36f1ec38"
+    }
+  ]
+}

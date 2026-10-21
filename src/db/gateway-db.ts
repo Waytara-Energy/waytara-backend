@@ -68,6 +68,8 @@ export interface GatewayDb {
   getPushInterval(a: { actor: string; equipmentId: string }): Promise<number | null>;
   /** Changes it (60, 120, 300, 600, 900, 1800 or 3600 seconds) and records who did it; returns the previous value. */
   setPushInterval(a: { equipmentId: string; actor: string; seconds: number; ip?: string | null }): Promise<{ previous: number; seconds: number }>;
+  /** Which level of Bluetooth access this person gets for this unit (admin, service, network), or null for none. Recorded in the activity log. */
+  bleAccess(a: { actor: string; equipmentId: string; ip?: string | null }): Promise<"network" | "service" | "admin" | null>;
   /** Replaces a unit's key without cutting it off: makes the new key (both are valid side by side) and starts a rotation. Throws "conflict" if one is already open. */
   beginRotation(a: { oldKeyId: string; ciphertext: Buffer; fingerprint: string; actor: string; ip?: string | null; windowSeconds?: number }): Promise<{ rotationId: string; newKeyId: string; equipmentId: string; expiresAt: string }>;
   /** The unit has the new key aside. False if the rotation is not open any more. */
