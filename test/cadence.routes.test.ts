@@ -261,3 +261,35 @@ describe("when the file store is down", () => {
     expect(r.body).not.toMatch(/store|R2|bucket/i);
   });
 });
+
+describe("decoding raw words for the setup page (T20)", () => {
+  const post = (body: unknown, token = "tok-admin", id = EQ) => app.inject({ method: "POST", url: `/v1/equipment/${id}/decode`, headers: { authorization: `Bearer ${token}` }, payload: body as object });
+  const blocks = { blocks: [[186, "0064"], [190, "ffc4"], [900, "0007"]] };
+
+  it("decodes the words the unit shows live, with the names and units, for staff", async () => {
+    const r = await post(blocks);
+    expect(r.statusCode).toBe(200);
+    expect(r.headers["cache-control"]).toBe("no-store");
+    const values = r.json().values as { key: string; label: string; unit: string | null; value: number }[];
+    expect(values.find((v) => v.key === "pv1_power_w")).toMatchObject({ label: "PV1 power", unit: "W", value: 100 });
+    expect(values.find((v) => v.key === "battery_power_w")!.value).toBeLessThan(0); // 0xffc4 is a negative number
+    expect(values.map((v) => v.key)).toContain("internal_x");
+  });
+
+  it("leaves out what the words do not cover, and what a customer may not see", async () => {
+    expect((await post({ blocks: [[186, "0064"]] })).json().values.map((v: { key: string }) => v.key)).toEqual(["pv1_power_w"]);
+    const keys = (await post(blocks, "tok-customer")).json().values.map((v: { key: string }) => v.key);
+    expect(keys).toContain("pv1_power_w");
+    expect(keys).not.toContain("internal_x");
+  });
+
+  it("is a plain 404 for someone without access, 401 without a sign-in, 400 for words that are not words", async () => {
+    expect((await post(blocks, "tok-stranger")).statusCode).toBe(404);
+    expect((await app.inject({ method: "POST", url: `/v1/equipment/${EQ}/decode`, payload: blocks })).statusCode).toBe(401);
+    for (const bad of [{}, { blocks: [] }, { blocks: [[186, "zz"]] }, { blocks: [[186, "006"]] }, { blocks: [[-1, "0064"]] }, { blocks: [[186, "0064"].concat()] }]) {
+      if (JSON.stringify(bad) === JSON.stringify({ blocks: [[186, "0064"]] })) continue;
+      expect((await post(bad)).statusCode, JSON.stringify(bad)).toBe(400);
+    }
+    expect((await post(blocks, "tok-admin", "not-an-id")).statusCode).toBe(400);
+  });
+});

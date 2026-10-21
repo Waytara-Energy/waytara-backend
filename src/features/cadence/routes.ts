@@ -1,6 +1,7 @@
 import { Readable } from "node:stream";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { decodeMetric } from "../../core/decode.js";
 import { DbError, type GatewayDb } from "../../db/gateway-db.js";
 import { AppError, badRequest, notFound } from "../../lib/errors.js";
 import { userLimited } from "../../plugins/auth.js";
@@ -40,6 +41,15 @@ const reportQuery = z.object({
     .transform((s) => s.split(",").map((k) => k.trim()).filter(Boolean)),
   format: z.enum(["csv", "json"]).default("csv"),
   limit: z.coerce.number().int().min(1).max(20_000).default(500),
+});
+
+const idParam = z.object({ id: z.uuid() });
+/** raw register blocks as the unit sends them over Bluetooth: [start, "4 hex digits per register"] */
+const decodeBody = z.object({
+  blocks: z
+    .array(z.tuple([z.number().int().min(0).max(65_535), z.string().regex(/^(?:[0-9a-fA-F]{4}){1,125}$/)]))
+    .min(1)
+    .max(64),
 });
 
 function parse<T extends z.ZodType>(schema: T, input: unknown): z.infer<T> {
@@ -155,4 +165,21 @@ export async function registerCadenceRoutes(app: FastifyInstance, d: CadenceRout
     return reply.send(Readable.from(body()));
   });
 
+  // Turns raw register words (what the unit shows live over Bluetooth) into values, with the same rules as the stored readings. The page never
+  // decodes anything itself. A customer gets only the values the customer view shows.
+  app.post("/v1/equipment/:id/decode", userLimited(app, 90), async (request, reply) => {
+    const { id } = parse(idParam, request.params);
+    const body = parse(decodeBody, request.body);
+    const { columns } = await access(request.user!.id, id);
+    const words = new Map<number, number>();
+    for (const [start, hex] of body.blocks) for (let i = 0; i < hex.length / 4; i++) words.set(start + i, parseInt(hex.slice(4 * i, 4 * i + 4), 16));
+    const values: { key: string; label: string; unit: string | null; group: string | null; value: number | string; in_range: boolean }[] = [];
+    for (const c of columns) {
+      if (!c.def.registers.every((r) => words.has(r))) continue;
+      const r = decodeMetric(c.def, words);
+      if (r.ok) values.push({ key: c.key, label: c.label, unit: c.unit, group: c.category, value: r.value, in_range: r.inRange });
+    }
+    reply.header("Cache-Control", "no-store");
+    return { values };
+  });
 }
