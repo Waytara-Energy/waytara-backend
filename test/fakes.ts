@@ -159,6 +159,68 @@ export class FakeDb implements GatewayDb {
     return true;
   }
 
+  rotations: { id: string; equipmentId: string; oldKeyId: string; newKeyId: string; state: "sent" | "staged" | "done" | "cancelled"; startedAt: string; expiresAt: string; actor: string; reason?: string }[] = [];
+
+  async beginRotation(a: Parameters<GatewayDb["beginRotation"]>[0]): Promise<{ rotationId: string; newKeyId: string; equipmentId: string; expiresAt: string }> {
+    this.check();
+    const old = this.keys.find((k) => k.keyId === a.oldKeyId && !k.revokedAt && k.kind === "gateway");
+    if (!old) throw new DbError("not_found", "no such active unit key");
+    if (this.rotations.some((r) => r.equipmentId === old.equipmentId && (r.state === "sent" || r.state === "staged"))) throw new DbError("conflict", "a rotation is already in progress");
+    const newKeyId = randomUUID();
+    this.keys.push({ keyId: newKeyId, equipmentId: old.equipmentId, kind: "gateway", label: old.label, ciphertext: a.ciphertext, fingerprint: a.fingerprint, createdBy: a.actor, revokedAt: null, revokeReason: null, expiresAt: null });
+    const rotationId = randomUUID();
+    const expiresAt = new Date(this.now() + (a.windowSeconds ?? 600) * 1000).toISOString();
+    this.rotations.push({ id: rotationId, equipmentId: old.equipmentId, oldKeyId: old.keyId, newKeyId, state: "sent", startedAt: new Date(this.now()).toISOString(), expiresAt, actor: a.actor });
+    return { rotationId, newKeyId, equipmentId: old.equipmentId, expiresAt };
+  }
+
+  async rotationStaged(rotationId: string): Promise<boolean> {
+    this.check();
+    const r = this.rotations.find((x) => x.id === rotationId && x.state === "sent");
+    if (!r) return false;
+    r.state = "staged";
+    return true;
+  }
+
+  async completeRotation(rotationId: string): Promise<boolean> {
+    this.check();
+    const r = this.rotations.find((x) => x.id === rotationId && (x.state === "sent" || x.state === "staged"));
+    if (!r) return false;
+    const old = this.keys.find((k) => k.keyId === r.oldKeyId);
+    if (old && !old.revokedAt) {
+      old.revokedAt = new Date(this.now()).toISOString();
+      old.revokeReason = "rotated";
+    }
+    r.state = "done";
+    this.events.push({ equipmentId: r.equipmentId, keyId: r.newKeyId, event: "rotated", actor: r.actor, detail: { remote: true } });
+    return true;
+  }
+
+  async cancelRotation(rotationId: string, reason: string): Promise<boolean> {
+    this.check();
+    const r = this.rotations.find((x) => x.id === rotationId && (x.state === "sent" || x.state === "staged"));
+    if (!r) return false;
+    const nk = this.keys.find((k) => k.keyId === r.newKeyId);
+    if (nk && !nk.revokedAt) {
+      nk.revokedAt = new Date(this.now()).toISOString();
+      nk.revokeReason = "rotation_cancelled";
+    }
+    r.state = "cancelled";
+    r.reason = reason;
+    return true;
+  }
+
+  async rotationForLogin(keyId: string): Promise<string | null> {
+    this.check();
+    return this.rotations.find((x) => x.newKeyId === keyId && (x.state === "sent" || x.state === "staged"))?.id ?? null;
+  }
+
+  async openRotation(equipmentId: string): Promise<{ rotationId: string; state: "sent" | "staged"; startedAt: string; expiresAt: string } | null> {
+    this.check();
+    const r = this.rotations.find((x) => x.equipmentId === equipmentId && (x.state === "sent" || x.state === "staged"));
+    return r ? { rotationId: r.id, state: r.state as "sent" | "staged", startedAt: r.startedAt, expiresAt: r.expiresAt } : null;
+  }
+
   intervals = new Map<string, number>();
 
   async getPushInterval(a: Parameters<GatewayDb["getPushInterval"]>[0]): Promise<number | null> {

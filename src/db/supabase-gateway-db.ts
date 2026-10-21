@@ -232,6 +232,40 @@ export class SupabaseGatewayDb implements GatewayDb {
     return { previous: Number(r?.previous ?? 900), seconds: Number(r?.seconds ?? a.seconds) };
   }
 
+  async beginRotation(a: Parameters<GatewayDb["beginRotation"]>[0]): Promise<{ rotationId: string; newKeyId: string; equipmentId: string; expiresAt: string }> {
+    const r = (await this.call("gw_begin_rotation", {
+      p_old: a.oldKeyId,
+      p_ciphertext: toHex(a.ciphertext),
+      p_fingerprint: a.fingerprint,
+      p_actor: a.actor,
+      p_ip: a.ip ?? null,
+      p_window_seconds: a.windowSeconds ?? 600,
+    })) as { rotation_id: string; new_key_id: string; equipment_id: string; expires_at: string };
+    return { rotationId: r.rotation_id, newKeyId: r.new_key_id, equipmentId: r.equipment_id, expiresAt: r.expires_at };
+  }
+
+  async rotationStaged(rotationId: string): Promise<boolean> {
+    return (await this.call("gw_rotation_staged", { p_rotation: rotationId })) === true;
+  }
+
+  async completeRotation(rotationId: string, ip?: string | null): Promise<boolean> {
+    return (await this.call("gw_complete_rotation", { p_rotation: rotationId, p_ip: ip ?? null })) === true;
+  }
+
+  async cancelRotation(rotationId: string, reason: string): Promise<boolean> {
+    return (await this.call("gw_cancel_rotation", { p_rotation: rotationId, p_reason: reason.slice(0, 200) })) === true;
+  }
+
+  async rotationForLogin(keyId: string): Promise<string | null> {
+    const r = await this.call("gw_rotation_for_login", { p_key: keyId });
+    return typeof r === "string" ? r : null;
+  }
+
+  async openRotation(equipmentId: string): Promise<{ rotationId: string; state: "sent" | "staged"; startedAt: string; expiresAt: string } | null> {
+    const r = (await this.call("gw_open_rotation", { p_equipment: equipmentId })) as { rotation_id: string; state: "sent" | "staged"; started_at: string; expires_at: string } | null;
+    return r ? { rotationId: r.rotation_id, state: r.state, startedAt: r.started_at, expiresAt: r.expires_at } : null;
+  }
+
   async claimDevice(a: Parameters<GatewayDb["claimDevice"]>[0]): Promise<{ equipmentId: string; keyId: string; issuedTo: string | null }> {
     const row = this.rows(await this.call("gw_claim_device", { p_ticket: a.ticket, p_hardware_id: a.hardwareId, p_ciphertext: toHex(a.ciphertext), p_fingerprint: a.fingerprint, p_ip: a.ip ?? null }))[0];
     if (!row) throw new DbError("unavailable", "the claim returned nothing");

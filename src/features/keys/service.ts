@@ -86,6 +86,10 @@ export class KeyService {
       const info = await this.db.keyInfo(keyId);
       if (!info || info.revokedAt) throw notFound();
       await this.requireManage(actor, info.equipmentId);
+      // A monitoring unit only receives a new key through setup or the remote key change; replacing it here cut the unit off with no way back.
+      if (info.kind === "gateway") {
+        throw new AppError(409, "use_key_change", "A monitoring unit's key is changed with Rotate key (the unit must be online) or by setting the unit up again. Replacing it here would lock the unit out.");
+      }
       const s = generateSecret(info.kind);
       const fingerprint = KeyVault.fingerprint(s.plaintext);
       const newId = await this.db.rotateKey({

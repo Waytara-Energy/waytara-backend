@@ -21,6 +21,8 @@ import { CadenceWriter } from "./features/cadence/writer.js";
 import { R2ObjectStore, type ObjectStore } from "./storage/object-store.js";
 import { registerBrokerRoute } from "./features/broker/routes.js";
 import { registerIntervalRoutes } from "./features/ingest/interval-routes.js";
+import { RotationService } from "./features/keys/rotation.js";
+import { registerRotationRoutes } from "./features/keys/rotation-routes.js";
 import { IngestService } from "./features/ingest/service.js";
 import type { IngestStore } from "./features/ingest/store.js";
 import type { LiveStore } from "./features/ingest/live.js";
@@ -160,6 +162,7 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
         void db.touchKey(keyId, ip).catch(() => undefined);
       };
       const ingest: { current?: IngestService } = {}; // the broker is made first, the intake needs the broker
+      const rotation: { current?: RotationService } = {}; // the key change needs the intake and the broker
       const broker = new Broker({
         keys,
         bus,
@@ -167,7 +170,10 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
         onUp: (id, name, payload) => void ingest.current?.handleUp(id, name, payload),
         onReady: (id) => void ingest.current?.handleReady(id),
         onAuthFailed: (id, ip) => recordFailure(id, ip, "mqtt login"),
-        onLogin: (_id, keyId, ip) => touchKey(keyId, ip),
+        onLogin: (id, keyId, ip) => {
+          touchKey(keyId, ip);
+          void rotation.current?.onLogin(id, keyId, ip);
+        },
       });
       await broker.start();
       hubStatus.boardsConnected = () => broker.connectedEquipment().filter((id) => broker.isConnected(id)).length;
@@ -193,10 +199,13 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
         onRejected: (id, reason) => recordFailure(id, null, reason),
         ...(isSettingsStore(store) ? { settingsStore: store, allowUnverifiedWrites: config.allowUnverifiedWrites } : {}),
         ...(isLiveStore(store) ? { liveStore: store } : {}),
+        onRotation: (id, type, rotationId, error) => void rotation.current?.onUnitEvent(id, type, rotationId, error),
       });
       ingest.current = service;
       service.start(2000);
       await registerIntervalRoutes(app, { db, reload: (equipmentId) => service.reloadProfile(equipmentId) });
+      rotation.current = new RotationService(db, vault, { status: (id) => service.unitStatus(id), command: (id, body) => service.command(id, body) }, bus);
+      await registerRotationRoutes(app, rotation.current);
       await registerBrokerRoute(app, broker);
       app.addHook("onClose", async () => {
         service.stop();

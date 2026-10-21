@@ -68,5 +68,17 @@ export interface GatewayDb {
   getPushInterval(a: { actor: string; equipmentId: string }): Promise<number | null>;
   /** Changes it (60, 120, 300, 600, 900, 1800 or 3600 seconds) and records who did it; returns the previous value. */
   setPushInterval(a: { equipmentId: string; actor: string; seconds: number; ip?: string | null }): Promise<{ previous: number; seconds: number }>;
+  /** Replaces a unit's key without cutting it off: makes the new key (both are valid side by side) and starts a rotation. Throws "conflict" if one is already open. */
+  beginRotation(a: { oldKeyId: string; ciphertext: Buffer; fingerprint: string; actor: string; ip?: string | null; windowSeconds?: number }): Promise<{ rotationId: string; newKeyId: string; equipmentId: string; expiresAt: string }>;
+  /** The unit has the new key aside. False if the rotation is not open any more. */
+  rotationStaged(rotationId: string): Promise<boolean>;
+  /** The unit logged in with the new key: the old one is cut. False if the rotation is not open. */
+  completeRotation(rotationId: string, ip?: string | null): Promise<boolean>;
+  /** The new key is cut, the old one stays. False if the rotation is not open. */
+  cancelRotation(rotationId: string, reason: string): Promise<boolean>;
+  /** The open rotation that this key is the new key of, if any (a login with it means the unit has switched). */
+  rotationForLogin(keyId: string): Promise<string | null>;
+  /** The unit's open rotation, for the status answer. */
+  openRotation(equipmentId: string): Promise<{ rotationId: string; state: "sent" | "staged"; startedAt: string; expiresAt: string } | null>;
   claimDevice(a: { ticket: string; hardwareId: string; ciphertext: Buffer; fingerprint: string; ip?: string | null }): Promise<{ equipmentId: string; keyId: string; issuedTo: string | null }>;
 }

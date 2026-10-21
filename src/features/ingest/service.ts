@@ -42,6 +42,8 @@ export interface IngestDeps {
   allowUnverifiedWrites?: boolean;
   /** Go Live (task A10): while somebody watches, readings are passed on to the dashboard's live channel; without it there is no live stream */
   liveStore?: LiveStore;
+  /** a unit's answer to a key change (T11): it has the new key aside, or it could not take it */
+  onRotation?: (equipmentId: string, type: "rotate_staged" | "rotate_failed", id: string | undefined, error: string | undefined) => void;
 }
 
 const ACK_LAG_S = 120;
@@ -84,6 +86,8 @@ interface Session {
   lastBoot: number | undefined;
   /** the board said, in its last heartbeat, that it is answering from its test inverter: its readings are made up and are not stored */
   simulated: boolean;
+  /** what the unit's software said it can do, in its last hello (for example rotate_key) */
+  caps: Set<string>;
   downCounter: number;
   stats: Record<"batches" | "frames" | "duplicates" | "droppedTime" | "droppedSimulated" | "outOfRange" | "undecodable" | "rejected" | "flushes" | "flushFailures", number>;
 }
@@ -205,7 +209,7 @@ export class IngestService {
       equipmentId, profile, map, mapVersion: version, mapBuiltAt: this.now(), readDefs, writeDefs, lastHeartbeatAt: 0,
       engine: new RollupEngine(), guard: new ReplayGuard(), latest: new Map(), pending: new Map(), seen: new Set(), lastAck: new Map(),
       flushedBoundary: bucketStartOf(nowS), nextFlushAt: this.nextFlush(profile.uploadIntervalS, nowS),
-      lastKeyRef: undefined, lastHbWrite: 0, lastHbInverterOnline: undefined, lastHbMapVer: undefined, lastMapPublish: 0, lastBoot: undefined, simulated: false, downCounter: 0, stats: emptyStats(),
+      lastKeyRef: undefined, lastHbWrite: 0, lastHbInverterOnline: undefined, lastHbMapVer: undefined, lastMapPublish: 0, lastBoot: undefined, simulated: false, caps: new Set<string>(), downCounter: 0, stats: emptyStats(),
     };
     this.sessions.set(equipmentId, s);
     return s;
@@ -357,6 +361,8 @@ export class IngestService {
     if (!parsed.success) return this.wrongShape(s, "event", parsed.error.issues);
     const e = parsed.data;
     this.d.log.info({ equipmentId: s.equipmentId, type: e.type, fw: e.fw_version, mapVer: e.map_ver }, "board event");
+    if (e.type === "hello" || e.type === "boot") s.caps = new Set(e.caps ?? []);
+    if (e.type === "rotate_staged" || e.type === "rotate_failed") this.d.onRotation?.(s.equipmentId, e.type, e.id, e.error);
     if ((e.type === "hello" || e.type === "boot") && e.map_ver !== s.mapVersion) await this.publishMap(s, false);
     if (e.type === "write_result" && this.settings && e.id) {
       await this.settings.onResult({ equipmentId: s.equipmentId, map: s.map, boardAlive: true }, { id: e.id, ok: e.ok === true, readback: e.readback, error: e.error });
@@ -364,6 +370,18 @@ export class IngestService {
   }
 
   /** Seals a command for a board and publishes it. False when it could not be sent. */
+  /** What the hub knows about a unit's live connection: is it checking in, and what can its software do. null if it is not connected. */
+  unitStatus(equipmentId: string): { alive: boolean; caps: readonly string[] } | null {
+    const s = this.sessions.get(equipmentId);
+    if (!s) return null;
+    return { alive: this.now() - s.lastHeartbeatAt <= BOARD_ALIVE_MS, caps: [...s.caps] };
+  }
+
+  /** Seals a command with the key the unit uses now and publishes it. */
+  async command(equipmentId: string, body: Record<string, unknown>): Promise<boolean> {
+    return this.sendCommand(equipmentId, body);
+  }
+
   private async sendCommand(equipmentId: string, body: Record<string, unknown>): Promise<boolean> {
     const s = this.sessions.get(equipmentId);
     if (!s) return false;

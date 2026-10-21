@@ -2,10 +2,12 @@ import type { AddressInfo } from "node:net";
 import type { FastifyInstance } from "fastify";
 import mqtt, { type IClientOptions, type MqttClient } from "mqtt";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { randomBytes } from "node:crypto";
 import { KeyVault } from "../src/core/key-vault.js";
 import { deriveLoginToken, loginTokenMatches } from "../src/core/mqtt-login.js";
 import { open, seal } from "../src/core/seal.js";
 import { dnTopic, upTopic } from "../src/features/broker/topics.js";
+import { KeyChangeBus } from "../src/lib/key-events.js";
 import { TokenError, type AuthUser, type TokenVerifier } from "../src/lib/jwt.js";
 import { FakeDb } from "./fakes.js";
 import { FakeStore } from "./fake-store.js";
@@ -18,6 +20,7 @@ const ADMIN = "a0000000-0000-4000-8000-000000000001";
 const key = Buffer.alloc(32, 9);
 const otherKey = Buffer.alloc(32, 8);
 const vault = new KeyVault({ current: Buffer.alloc(32, 3) });
+let bus: KeyChangeBus;
 const verify: TokenVerifier = async (t) => {
   if (t !== "tok-admin") throw new TokenError("no");
   return { id: ADMIN, role: "authenticated" } satisfies AuthUser;
@@ -41,7 +44,8 @@ beforeEach(async () => {
   await addKey(EQ, key);
   await addKey(OTHER, otherKey);
   store = new FakeStore();
-  app = await testApp({}, { db, verify, vault, store });
+  bus = new KeyChangeBus();
+  app = await testApp({}, { db, verify, vault, store, bus });
   await app.listen({ host: "127.0.0.1", port: 0 });
   port = (app.server.address() as AddressInfo).port;
 });
@@ -235,13 +239,20 @@ describe("keys changing while a board is connected", () => {
     expect(await refused({})).toBe(true);
   });
 
+  /** Replaces the unit's key as the database does and tells the broker (the endpoint for this was removed for units: it locked them out). */
+  async function rotateInDatabase(keyId: string, graceSeconds: number): Promise<Buffer> {
+    const fresh = randomBytes(32);
+    await db.rotateKey({ keyId, ciphertext: vault.encrypt(fresh, { equipmentId: EQ, kind: "gateway" }), fingerprint: "ffffff000000", actor: "a", graceSeconds });
+    bus.changed(EQ);
+    return fresh;
+  }
+
   it("drops a board when its key is rotated with no grace, and accepts the new token", async () => {
     const c = await connect();
     const gone = closes(c, 2500);
     const id = db.keys.find((k) => k.equipmentId === EQ)!.keyId;
-    const res = (await api("POST", `/v1/keys/${id}/rotate`, { grace_seconds: 0 })).json();
+    const fresh = await rotateInDatabase(id, 0);
     expect(await gone).toBe(true);
-    const fresh = Buffer.from(res.secret, "base64url");
     expect((await connect({ password: deriveLoginToken(fresh, EQ) })).connected).toBe(true);
     expect(await refused({})).toBe(true); // the old token no longer works
   });
@@ -249,10 +260,9 @@ describe("keys changing while a board is connected", () => {
   it("keeps the board connected during a grace period, with both tokens valid", async () => {
     const c = await connect();
     const id = db.keys.find((k) => k.equipmentId === EQ)!.keyId;
-    const res = (await api("POST", `/v1/keys/${id}/rotate`, { grace_seconds: 120 })).json();
+    const fresh = await rotateInDatabase(id, 120);
     await wait(200);
     expect(c.connected).toBe(true);
-    const fresh = Buffer.from(res.secret, "base64url");
     expect((await connect({ password: deriveLoginToken(fresh, EQ) })).connected).toBe(true);
   });
 });

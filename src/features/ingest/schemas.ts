@@ -61,5 +61,7 @@ export const evtBody = z.object({
   ok: z.boolean().optional(),
   readback: z.number().int().min(0).max(0xffff).optional(),
   error: z.string().max(200).optional(),
+  /** what this unit's software can do (in its hello): for example "rotate_key" */
+  caps: z.array(z.string().max(32)).max(16).optional(),
 });
 export type EvtBody = z.infer<typeof evtBody>;

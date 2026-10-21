@@ -156,19 +156,31 @@ describe("rotating and revoking", () => {
     return (await post(`/v1/equipment/${INVERTER}/keys`, "tok-admin", { kind: "gateway" })).json();
   }
 
-  it("rotates with no grace: the old key stops at once and the new one is returned once", async () => {
-    const first = await make();
-    const res = await post(`/v1/keys/${first.key_id}/rotate`, "tok-staff", {});
+  async function makeCharger() {
+    return (await post(`/v1/equipment/${CHARGER}/keys`, "tok-admin", { kind: "charger" })).json();
+  }
+
+  it("replaces a charger's key with no grace: the old key stops at once and the new one is returned once", async () => {
+    const first = await makeCharger();
+    const res = await post(`/v1/keys/${first.key_id}/rotate`, "tok-admin", {});
     expect(res.statusCode).toBe(201);
     expect(res.json().secret).not.toBe(first.secret);
     expect(res.json().replaces).toBe(first.key_id);
-    expect((await db.activeKeys(INVERTER)).map((k) => k.keyId)).toEqual([res.json().key_id]);
+    expect((await db.activeKeys(CHARGER)).map((k) => k.keyId)).toEqual([res.json().key_id]);
   });
 
-  it("rotates with a grace period: both keys work for a while", async () => {
+  it("replaces a charger's key with a grace period: both keys work for a while", async () => {
+    const first = await makeCharger();
+    await post(`/v1/keys/${first.key_id}/rotate`, "tok-admin", { grace_seconds: 120 });
+    expect(await db.activeKeys(CHARGER)).toHaveLength(2);
+  });
+
+  it("does not replace a monitoring unit's key by hand (that locks the unit out); it points to the key change instead", async () => {
     const first = await make();
-    await post(`/v1/keys/${first.key_id}/rotate`, "tok-staff", { grace_seconds: 120 });
-    expect(await db.activeKeys(INVERTER)).toHaveLength(2);
+    const res = await post(`/v1/keys/${first.key_id}/rotate`, "tok-staff", {});
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("use_key_change");
+    expect((await db.activeKeys(INVERTER)).map((k) => k.keyId)).toEqual([first.key_id]);
   });
 
   it("will not rotate a revoked key, a missing key, or one the caller may not manage", async () => {
