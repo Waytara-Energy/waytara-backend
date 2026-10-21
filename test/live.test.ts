@@ -4,7 +4,7 @@ import { open, seal } from "../src/core/seal.js";
 import { KeyCache } from "../src/features/broker/key-cache.js";
 import { dnTopic, upTopic } from "../src/features/broker/topics.js";
 import { IngestService } from "../src/features/ingest/service.js";
-import type { LiveStore } from "../src/features/ingest/live.js";
+import type { LiveStore, LiveTiming } from "../src/features/ingest/live.js";
 import { FakeDb } from "./fakes.js";
 import { FakeStore } from "./fake-store.js";
 
@@ -20,6 +20,14 @@ class LiveFakeStore extends FakeStore implements LiveStore {
   ticks: { t: number; v: Record<string, number> }[] = [];
   checks = 0;
   tickResult = true;
+  until: number | null = null;
+  timings: LiveTiming[] = [];
+  async liveUntil(): Promise<number | null> {
+    return this.until;
+  }
+  async recordLiveTiming(_eq: string, t: LiveTiming): Promise<void> {
+    this.timings.push(t);
+  }
   async liveActive(): Promise<boolean> {
     this.checks++;
     return this.watching;
@@ -151,5 +159,82 @@ describe("Go Live", () => {
     await svc.tick(nowMs);
     expect(store.checks).toBe(checks);
     expect(liveCommands()).toHaveLength(0);
+  });
+});
+
+describe("Go Live without delays (T13)", () => {
+  it("a wake-up looks at once, without waiting for the next 3-second check", async () => {
+    await step(4000); // nobody watches; the next check is 3 s away
+    store.watching = true;
+    nowMs += 100;
+    await svc.tick(nowMs);
+    expect(liveCommands()).toHaveLength(0); // the periodic check is not due yet
+    await svc.wakeLive(EQ);
+    expect(liveCommands()).toHaveLength(1);
+  });
+
+  it("a wake-up for a unit that is not connected does nothing", async () => {
+    store.watching = true;
+    const checks = store.checks;
+    await svc.wakeLive("aaaaaaaa-0000-4000-8000-0000000000ff");
+    expect(store.checks).toBe(checks);
+  });
+
+  it("a wake-up while nobody watches only finds out that nobody does", async () => {
+    await svc.wakeLive(EQ);
+    expect(liveCommands()).toHaveLength(0);
+  });
+
+  it("notes how the start went: request to command, to first reading, to the first value on the channel", async () => {
+    store.watching = true;
+    store.until = nowMs + 75_000 - 1500; // the viewer pressed the button 1.5 s ago
+    await svc.wakeLive(EQ);
+    nowMs += 300;
+    await frame(1200);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(store.timings).toHaveLength(1);
+    const t = store.timings[0]!;
+    expect(t.requestToCommandMs).toBe(1500);
+    expect(t.commandToFirstFrameMs).toBe(300);
+    expect(t.firstFrameToTickMs).toBe(0);
+    expect(t.requestToFirstTickMs).toBe(1800);
+    expect(t.ticks).toBe(1);
+  });
+
+  it("times the start from the moment the hub saw the request when the database cannot say when it was made", async () => {
+    store.watching = true;
+    await svc.wakeLive(EQ);
+    await frame(1100);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(store.timings[0]!.requestToCommandMs).toBe(0);
+  });
+
+  it("measures the rhythm of the ticks and updates the note as the session runs", async () => {
+    store.watching = true;
+    await svc.wakeLive(EQ);
+    for (let i = 0; i < 10; i++) {
+      nowMs += 2000;
+      await frame(1000 + i);
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    const last = store.timings.at(-1)!;
+    expect(last.ticks).toBe(10);
+    expect(last.avgGapMs).toBe(2000);
+    expect(last.maxGapMs).toBe(2000);
+    expect(store.timings.length).toBeLessThan(10); // not a database write for every tick
+  });
+
+  it("does not stop the stream when writing the timing fails", async () => {
+    store.watching = true;
+    store.recordLiveTiming = async () => {
+      throw new Error("db down");
+    };
+    await svc.wakeLive(EQ);
+    await frame(1000);
+    await new Promise((r) => setTimeout(r, 5));
+    nowMs += 2000;
+    await frame(1010);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(store.ticks).toHaveLength(2);
   });
 });

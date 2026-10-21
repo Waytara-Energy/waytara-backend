@@ -375,6 +375,14 @@ export class IngestService {
   }
 
   /** Seals a command for a board and publishes it. False when it could not be sent. */
+  /** The dashboard has just asked for Go Live for this unit: look at once instead of at the next check. */
+  async wakeLive(equipmentId: string): Promise<void> {
+    const s = this.sessions.get(equipmentId);
+    if (!s) return;
+    const alive = s.lastHeartbeatAt > 0 && this.now() - s.lastHeartbeatAt < BOARD_ALIVE_MS;
+    await this.live?.wake(equipmentId, alive);
+  }
+
   /** What the hub knows about a unit's live connection: is it checking in, and what can its software do. null if it is not connected. */
   unitStatus(equipmentId: string): { alive: boolean; caps: readonly string[] } | null {
     const s = this.sessions.get(equipmentId);

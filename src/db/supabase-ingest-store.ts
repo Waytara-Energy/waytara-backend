@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { BucketStats, ClosedBucket } from "../core/rollup.js";
 import type { MetricDef } from "../core/decode.js";
 import type { EquipmentProfile, HeartbeatReport, IngestStore, SummaryWrite } from "../features/ingest/store.js";
-import type { LiveStore } from "../features/ingest/live.js";
+import type { LiveStore, LiveTiming } from "../features/ingest/live.js";
 import type { PendingWrite, SettingRow, SettingsStore } from "../features/ingest/settings.js";
 import { DbError } from "./gateway-db.js";
 
@@ -159,6 +159,26 @@ export class SupabaseIngestStore implements IngestStore, SettingsStore, LiveStor
 
   async liveActive(equipmentId: string): Promise<boolean> {
     return (await this.guard("gw_live_active", { p_equipment: equipmentId })) === true;
+  }
+
+  async liveUntil(equipmentId: string): Promise<number | null> {
+    const r = await this.guard("gw_live_until", { p_equipment: equipmentId });
+    const ms = typeof r === "string" ? Date.parse(r) : NaN;
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  async recordLiveTiming(equipmentId: string, t: LiveTiming): Promise<void> {
+    await this.guard("gw_record_live_timing", {
+      p_equipment: equipmentId,
+      p_started_at: new Date(t.startedAt).toISOString(),
+      p_request_to_command_ms: t.requestToCommandMs,
+      p_command_to_first_frame_ms: t.commandToFirstFrameMs,
+      p_first_frame_to_tick_ms: t.firstFrameToTickMs,
+      p_request_to_first_tick_ms: t.requestToFirstTickMs,
+      p_ticks: t.ticks,
+      p_avg_gap_ms: t.avgGapMs,
+      p_max_gap_ms: t.maxGapMs,
+    });
   }
 
   async liveTick(equipmentId: string, tMs: number, values: Record<string, number>): Promise<boolean> {
