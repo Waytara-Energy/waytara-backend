@@ -20,6 +20,16 @@ export interface DecodeRule {
   note?: string;
 }
 
+/** A time of day stored as HHMM digits in one register (900 is 09:00, 1730 is 17:30): the note of the settings that decode and encode that way. */
+export function isHhmmRule(rule: DecodeRule | null | undefined): boolean {
+  return typeof rule?.note === "string" && rule.note.startsWith("HHMM decimal");
+}
+
+/** Is `v` a real time of day written as HHMM digits (0 to 2359, minutes 00 to 59)? */
+export function isValidHhmm(v: number): boolean {
+  return Number.isInteger(v) && v >= 0 && Math.floor(v / 100) < 24 && v % 100 < 60;
+}
+
 export interface MetricDef {
   key: string;
   direction: "read" | "write" | "command";

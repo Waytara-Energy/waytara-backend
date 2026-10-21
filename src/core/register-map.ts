@@ -9,7 +9,7 @@
  * `metrics` to decode what comes back.
  */
 import { createHash } from "node:crypto";
-import type { DecodeRule, MetricDef } from "./decode.js";
+import { isHhmmRule, type DecodeRule, type MetricDef } from "./decode.js";
 
 export interface MapOptions {
   /** PV inputs the unit has (stock record technical_specs.mppt_count); pvN_* keys with N above it are left out */
@@ -98,6 +98,7 @@ function rawBounds(def: MetricDef, mask: number): { minRaw: number | null; maxRa
     const fieldMax = mask >> shiftOf(mask);
     return { minRaw: 0, maxRaw: fieldMax };
   }
+  if (isHhmmRule(rule)) return { minRaw: 0, maxRaw: 2359 }; // a time of day: the digits 0000 to 2359 (minutes are checked when the value is encoded)
   const scale = rule.scale ?? 1;
   const offset = rule.offset ?? 0;
   const toRaw = (v: number | null | undefined) => (v == null ? null : Math.round((v - offset) / scale));
@@ -176,7 +177,8 @@ export function buildRegisterMap(defs: readonly MetricDef[], options: MapOptions
   // the backend (role, verified flag) before it signs a command; the board only refuses what is not on this list.
   const writes: WriteSlot[] = [];
   for (const d of defs) {
-    if (d.direction !== "write" || d.registers.length !== 1 || d.decode?.note || d.decode?.combine) continue;
+    // a time of day (HHMM digits in one register) is an ordinary single-register write; the other special notes (the clock, text) are not
+    if (d.direction !== "write" || d.registers.length !== 1 || (d.decode?.note && !isHhmmRule(d.decode)) || d.decode?.combine) continue;
     if (options.mpptCount !== undefined) {
       const m = PV_KEY.exec(d.key);
       if (m && Number(m[1]) > options.mpptCount) continue;

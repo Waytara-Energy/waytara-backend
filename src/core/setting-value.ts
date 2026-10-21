@@ -6,7 +6,7 @@
  * The settings log keeps numbers as text: a yes/no setting is "1" or "0" (a person's "true" and "false" are accepted), a time is its
  * HHMM digits. Times, the inverter clock and other settings that need special reading (decode.note) are not written here.
  */
-import { decodeMetric, type MetricDef } from "./decode.js";
+import { decodeMetric, isHhmmRule, isValidHhmm, type MetricDef } from "./decode.js";
 import type { WriteSlot } from "./register-map.js";
 
 export type Encoded = { ok: true; raw: number } | { ok: false; reason: string };
@@ -45,7 +45,11 @@ export function encodeSetting(def: MetricDef, slot: WriteSlot, text: string): En
   }
   const rule = def.decode ?? {};
   let raw: number;
-  if (slot.mask !== 0xffff) {
+  if (isHhmmRule(rule)) {
+    // a time of day is its HHMM digits: 900 for 09:00; 960 or 2400 are not times
+    if (!isValidHhmm(v)) return { ok: false, reason: `${text.slice(0, 40)} is not a time of day (HHMM, from 0000 to 2359, minutes under 60)` };
+    raw = v;
+  } else if (slot.mask !== 0xffff) {
     if (!Number.isInteger(v)) return { ok: false, reason: `${v} is not a whole number` };
     const fieldMax = slot.mask >> shiftOf(slot.mask);
     if (v < 0 || v > fieldMax) return { ok: false, reason: `${v} does not fit the setting (0 to ${fieldMax})` };

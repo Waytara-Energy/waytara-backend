@@ -1,0 +1,1088 @@
+[
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "battery_low_soc_pct",
+  "pollEnabled": false,
+  "registers": [
+   219
+  ],
+  "showForUser": true,
+  "validMax": 100,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": "energy_management_mode",
+  "key": "energy_priority_mode",
+  "pollEnabled": false,
+  "registers": [
+   243
+  ],
+  "showForUser": true,
+  "validMax": 1,
+  "validMin": 0,
+  "valueKind": "enum",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "generator_charge_current_a",
+  "pollEnabled": false,
+  "registers": [
+   227
+  ],
+  "showForUser": true,
+  "validMax": 185,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "generator_charge_enabled",
+  "pollEnabled": false,
+  "registers": [
+   231
+  ],
+  "showForUser": true,
+  "validMax": 1,
+  "validMin": 0,
+  "valueKind": "bool",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "generator_charge_start_soc_pct",
+  "pollEnabled": false,
+  "registers": [
+   226
+  ],
+  "showForUser": true,
+  "validMax": 100,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "scale": 0.01
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "generator_charge_start_voltage_v",
+  "pollEnabled": false,
+  "registers": [
+   225
+  ],
+  "showForUser": true,
+  "validMax": 63,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "grid_charge_current_a",
+  "pollEnabled": false,
+  "registers": [
+   230
+  ],
+  "showForUser": true,
+  "validMax": 185,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "grid_charge_enabled",
+  "pollEnabled": false,
+  "registers": [
+   232
+  ],
+  "showForUser": true,
+  "validMax": 1,
+  "validMin": 0,
+  "valueKind": "bool",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "grid_charge_start_soc_pct",
+  "pollEnabled": false,
+  "registers": [
+   229
+  ],
+  "showForUser": true,
+  "validMax": 100,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "scale": 0.01
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "grid_charge_start_voltage_v",
+  "pollEnabled": false,
+  "registers": [
+   228
+  ],
+  "showForUser": true,
+  "validMax": 63,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0F00"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "grid_peak_shaving_enabled",
+  "pollEnabled": false,
+  "registers": [
+   280
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "grid_peak_shaving_power_w",
+  "pollEnabled": false,
+  "registers": [
+   293
+  ],
+  "showForUser": true,
+  "validMax": 16000,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x000C"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "inverter_beep_enabled",
+  "pollEnabled": false,
+  "registers": [
+   330
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "note": "Packed bytes, 2 per register, high byte first: reg 22 = year-2000 / month, reg 23 = day / hour, reg 24 = minute / second."
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "inverter_date_time",
+  "pollEnabled": false,
+  "registers": [
+   22,
+   23,
+   24
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "datetime",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x00C0"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "inverter_screen_auto_dim_enabled",
+  "pollEnabled": false,
+  "registers": [
+   330
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "low_noise_mode_enabled",
+  "pollEnabled": false,
+  "registers": [
+   34
+  ],
+  "showForUser": true,
+  "validMax": 1,
+  "validMin": 0,
+  "valueKind": "bool",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "smart_load_off_soc_pct",
+  "pollEnabled": false,
+  "registers": [
+   237
+  ],
+  "showForUser": true,
+  "validMax": 100,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "smart_load_on_soc_pct",
+  "pollEnabled": false,
+  "registers": [
+   239
+  ],
+  "showForUser": true,
+  "validMax": 100,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "solar_sell_enabled",
+  "pollEnabled": false,
+  "registers": [
+   247
+  ],
+  "showForUser": true,
+  "validMax": 1,
+  "validMin": 0,
+  "valueKind": "bool",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0001"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_enabled",
+  "pollEnabled": false,
+  "registers": [
+   248
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0020"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_friday_enabled",
+  "pollEnabled": false,
+  "registers": [
+   248
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0002"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_monday_enabled",
+  "pollEnabled": false,
+  "registers": [
+   248
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0040"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_saturday_enabled",
+  "pollEnabled": false,
+  "registers": [
+   248
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot1_battery_soc_pct",
+  "pollEnabled": false,
+  "registers": [
+   268
+  ],
+  "showForUser": true,
+  "validMax": 100,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "scale": 0.01
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot1_battery_voltage_v",
+  "pollEnabled": false,
+  "registers": [
+   262
+  ],
+  "showForUser": true,
+  "validMax": 63,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0002"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot1_generator_charge_enabled",
+  "pollEnabled": false,
+  "registers": [
+   274
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0001"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot1_grid_charge_enabled",
+  "pollEnabled": false,
+  "registers": [
+   274
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot1_power_w",
+  "pollEnabled": false,
+  "registers": [
+   256
+  ],
+  "showForUser": true,
+  "validMax": 8000,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "note": "HHMM decimal: value 2359 = 23:59 (hour = v div 100, minute = v mod 100)."
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot1_start_time",
+  "pollEnabled": false,
+  "registers": [
+   250
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "time",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot2_battery_soc_pct",
+  "pollEnabled": false,
+  "registers": [
+   269
+  ],
+  "showForUser": true,
+  "validMax": 100,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "scale": 0.01
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot2_battery_voltage_v",
+  "pollEnabled": false,
+  "registers": [
+   263
+  ],
+  "showForUser": true,
+  "validMax": 63,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0002"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot2_generator_charge_enabled",
+  "pollEnabled": false,
+  "registers": [
+   275
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0001"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot2_grid_charge_enabled",
+  "pollEnabled": false,
+  "registers": [
+   275
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot2_power_w",
+  "pollEnabled": false,
+  "registers": [
+   257
+  ],
+  "showForUser": true,
+  "validMax": 8000,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "note": "HHMM decimal: value 2359 = 23:59 (hour = v div 100, minute = v mod 100)."
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot2_start_time",
+  "pollEnabled": false,
+  "registers": [
+   251
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "time",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot3_battery_soc_pct",
+  "pollEnabled": false,
+  "registers": [
+   270
+  ],
+  "showForUser": true,
+  "validMax": 100,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "scale": 0.01
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot3_battery_voltage_v",
+  "pollEnabled": false,
+  "registers": [
+   264
+  ],
+  "showForUser": true,
+  "validMax": 63,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0002"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot3_generator_charge_enabled",
+  "pollEnabled": false,
+  "registers": [
+   276
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0001"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot3_grid_charge_enabled",
+  "pollEnabled": false,
+  "registers": [
+   276
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot3_power_w",
+  "pollEnabled": false,
+  "registers": [
+   258
+  ],
+  "showForUser": true,
+  "validMax": 8000,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "note": "HHMM decimal: value 2359 = 23:59 (hour = v div 100, minute = v mod 100)."
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot3_start_time",
+  "pollEnabled": false,
+  "registers": [
+   252
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "time",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot4_battery_soc_pct",
+  "pollEnabled": false,
+  "registers": [
+   271
+  ],
+  "showForUser": true,
+  "validMax": 100,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "scale": 0.01
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot4_battery_voltage_v",
+  "pollEnabled": false,
+  "registers": [
+   265
+  ],
+  "showForUser": true,
+  "validMax": 63,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0002"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot4_generator_charge_enabled",
+  "pollEnabled": false,
+  "registers": [
+   277
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0001"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot4_grid_charge_enabled",
+  "pollEnabled": false,
+  "registers": [
+   277
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot4_power_w",
+  "pollEnabled": false,
+  "registers": [
+   259
+  ],
+  "showForUser": true,
+  "validMax": 8000,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "note": "HHMM decimal: value 2359 = 23:59 (hour = v div 100, minute = v mod 100)."
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot4_start_time",
+  "pollEnabled": false,
+  "registers": [
+   253
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "time",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot5_battery_soc_pct",
+  "pollEnabled": false,
+  "registers": [
+   272
+  ],
+  "showForUser": true,
+  "validMax": 100,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "scale": 0.01
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot5_battery_voltage_v",
+  "pollEnabled": false,
+  "registers": [
+   266
+  ],
+  "showForUser": true,
+  "validMax": 63,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0002"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot5_generator_charge_enabled",
+  "pollEnabled": false,
+  "registers": [
+   278
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0001"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot5_grid_charge_enabled",
+  "pollEnabled": false,
+  "registers": [
+   278
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot5_power_w",
+  "pollEnabled": false,
+  "registers": [
+   260
+  ],
+  "showForUser": true,
+  "validMax": 8000,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "note": "HHMM decimal: value 2359 = 23:59 (hour = v div 100, minute = v mod 100)."
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot5_start_time",
+  "pollEnabled": false,
+  "registers": [
+   254
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "time",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot6_battery_soc_pct",
+  "pollEnabled": false,
+  "registers": [
+   273
+  ],
+  "showForUser": true,
+  "validMax": 100,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "scale": 0.01
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot6_battery_voltage_v",
+  "pollEnabled": false,
+  "registers": [
+   267
+  ],
+  "showForUser": true,
+  "validMax": 63,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0002"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot6_generator_charge_enabled",
+  "pollEnabled": false,
+  "registers": [
+   279
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0001"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot6_grid_charge_enabled",
+  "pollEnabled": false,
+  "registers": [
+   279
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": null,
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot6_power_w",
+  "pollEnabled": false,
+  "registers": [
+   261
+  ],
+  "showForUser": true,
+  "validMax": 8000,
+  "validMin": 0,
+  "valueKind": "number",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "note": "HHMM decimal: value 2359 = 23:59 (hour = v div 100, minute = v mod 100)."
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_slot6_start_time",
+  "pollEnabled": false,
+  "registers": [
+   255
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "time",
+  "verified": true
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0080"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_sunday_enabled",
+  "pollEnabled": false,
+  "registers": [
+   248
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0010"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_thursday_enabled",
+  "pollEnabled": false,
+  "registers": [
+   248
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0004"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_tuesday_enabled",
+  "pollEnabled": false,
+  "registers": [
+   248
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ },
+ {
+  "cadenceSeconds": 300,
+  "decode": {
+   "bitmask": "0x0008"
+  },
+  "direction": "write",
+  "enumRef": null,
+  "key": "time_of_use_wednesday_enabled",
+  "pollEnabled": false,
+  "registers": [
+   248
+  ],
+  "showForUser": true,
+  "validMax": null,
+  "validMin": null,
+  "valueKind": "bool",
+  "verified": false
+ }
+]
