@@ -64,5 +64,9 @@ export interface GatewayDb {
   claimPeek(ticket: string, hardwareId: string): Promise<{ equipmentId: string } | null>;
   /** Unlinks the monitoring unit from this equipment and revokes its key, so the unit can be set up for another equipment. False if no unit was linked. */
   releaseBoard(a: { equipmentId: string; actor: string; ip?: string | null }): Promise<boolean>;
+  /** How often this unit's summaries and latest values are written to the database (seconds), or null when the person may not manage the unit. */
+  getPushInterval(a: { actor: string; equipmentId: string }): Promise<number | null>;
+  /** Changes it (60, 120, 300, 600, 900, 1800 or 3600 seconds) and records who did it; returns the previous value. */
+  setPushInterval(a: { equipmentId: string; actor: string; seconds: number; ip?: string | null }): Promise<{ previous: number; seconds: number }>;
   claimDevice(a: { ticket: string; hardwareId: string; ciphertext: Buffer; fingerprint: string; ip?: string | null }): Promise<{ equipmentId: string; keyId: string; issuedTo: string | null }>;
 }

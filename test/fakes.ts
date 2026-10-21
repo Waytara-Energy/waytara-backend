@@ -159,6 +159,22 @@ export class FakeDb implements GatewayDb {
     return true;
   }
 
+  intervals = new Map<string, number>();
+
+  async getPushInterval(a: Parameters<GatewayDb["getPushInterval"]>[0]): Promise<number | null> {
+    this.check();
+    return this.manage.has(`${a.actor}|${a.equipmentId}`) ? (this.intervals.get(a.equipmentId) ?? 900) : null;
+  }
+
+  async setPushInterval(a: Parameters<GatewayDb["setPushInterval"]>[0]): Promise<{ previous: number; seconds: number }> {
+    this.check();
+    if (!this.manage.has(`${a.actor}|${a.equipmentId}`)) throw new DbError("forbidden", "not allowed");
+    if (![60, 120, 300, 600, 900, 1800, 3600].includes(a.seconds)) throw new DbError("invalid", "not an allowed interval");
+    const previous = this.intervals.get(a.equipmentId) ?? 900;
+    this.intervals.set(a.equipmentId, a.seconds);
+    return { previous, seconds: a.seconds };
+  }
+
   async claimDevice(a: Parameters<GatewayDb["claimDevice"]>[0]): Promise<{ equipmentId: string; keyId: string; issuedTo: string | null }> {
     this.check();
     const t = this.open(a.ticket, a.hardwareId);

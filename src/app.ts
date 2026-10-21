@@ -20,6 +20,7 @@ import { registerCadenceRoutes } from "./features/cadence/routes.js";
 import { CadenceWriter } from "./features/cadence/writer.js";
 import { R2ObjectStore, type ObjectStore } from "./storage/object-store.js";
 import { registerBrokerRoute } from "./features/broker/routes.js";
+import { registerIntervalRoutes } from "./features/ingest/interval-routes.js";
 import { IngestService } from "./features/ingest/service.js";
 import type { IngestStore } from "./features/ingest/store.js";
 import type { LiveStore } from "./features/ingest/live.js";
@@ -195,6 +196,7 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
       });
       ingest.current = service;
       service.start(2000);
+      await registerIntervalRoutes(app, { db, reload: (equipmentId) => service.reloadProfile(equipmentId) });
       await registerBrokerRoute(app, broker);
       app.addHook("onClose", async () => {
         service.stop();

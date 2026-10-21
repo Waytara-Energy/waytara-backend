@@ -536,3 +536,21 @@ describe("a board that answers from its test inverter", () => {
     expect(bucketOf("pv1_power_w", S)).toBeTruthy();
   });
 });
+
+describe("a changed push interval", () => {
+  it("is applied to a running unit at once: it is written at the new rhythm without waiting for the old one", async () => {
+    await feed(7, S, S + 200);
+    nowMs = (S + 200) * 1000 + 3000;
+    await svc.tick(nowMs);
+    const before = store.writes.length; // the 15-minute rhythm: nothing is due after three minutes
+    store.profile = { ...store.profile!, uploadIntervalS: 60 };
+    await svc.reloadProfile(EQ);
+    nowMs += 61_000;
+    await svc.tick(nowMs);
+    expect(store.writes.length).toBeGreaterThan(before);
+  });
+
+  it("does nothing for a unit that is not connected (its next start reads the database)", async () => {
+    await expect(svc.reloadProfile("00000000-0000-4000-8000-0000000000ff")).resolves.toBeUndefined();
+  });
+});

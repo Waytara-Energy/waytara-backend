@@ -222,6 +222,16 @@ export class SupabaseGatewayDb implements GatewayDb {
     return (await this.call("gw_release_board", { p_equipment: a.equipmentId, p_actor: a.actor, p_ip: a.ip ?? null })) === true;
   }
 
+  async getPushInterval(a: Parameters<GatewayDb["getPushInterval"]>[0]): Promise<number | null> {
+    const r = await this.call("gw_get_push_interval", { p_actor: a.actor, p_equipment: a.equipmentId });
+    return typeof r === "number" ? r : null;
+  }
+
+  async setPushInterval(a: Parameters<GatewayDb["setPushInterval"]>[0]): Promise<{ previous: number; seconds: number }> {
+    const r = (await this.call("gw_set_push_interval", { p_equipment: a.equipmentId, p_actor: a.actor, p_seconds: a.seconds, p_ip: a.ip ?? null })) as { previous?: number; seconds?: number } | null;
+    return { previous: Number(r?.previous ?? 900), seconds: Number(r?.seconds ?? a.seconds) };
+  }
+
   async claimDevice(a: Parameters<GatewayDb["claimDevice"]>[0]): Promise<{ equipmentId: string; keyId: string; issuedTo: string | null }> {
     const row = this.rows(await this.call("gw_claim_device", { p_ticket: a.ticket, p_hardware_id: a.hardwareId, p_ciphertext: toHex(a.ciphertext), p_fingerprint: a.fingerprint, p_ip: a.ip ?? null }))[0];
     if (!row) throw new DbError("unavailable", "the claim returned nothing");

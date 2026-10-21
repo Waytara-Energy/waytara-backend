@@ -168,6 +168,16 @@ export class IngestService {
     return p;
   }
 
+  /** The person changed this unit's settings in the database (the push interval): take the new profile into the running session at once. */
+  async reloadProfile(equipmentId: string): Promise<void> {
+    const s = this.sessions.get(equipmentId);
+    if (!s) return; // not connected: the next start reads the database
+    const profile = await this.d.store.loadProfile(equipmentId);
+    if (!profile) return;
+    s.profile = profile;
+    s.nextFlushAt = this.nextFlush(profile.uploadIntervalS, Math.floor(this.now() / 1000));
+  }
+
   private async create(equipmentId: string, existing?: Session): Promise<Session | null> {
     const profile = await this.d.store.loadProfile(equipmentId);
     if (!profile) {
