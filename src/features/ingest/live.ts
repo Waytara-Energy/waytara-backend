@@ -54,6 +54,8 @@ interface State {
   active: boolean;
   nextCheck: number;
   commandedAt: number;
+  /** when the FIRST command of the running session was sent (commandedAt moves on at every renewal) */
+  firstCommandAt: number;
   lastTickAt: number;
   pendingT: number;
   pending: Record<string, number>;
@@ -83,7 +85,7 @@ export class LiveRelay {
   private state(eq: string): State {
     let s = this.states.get(eq);
     if (!s) {
-      s = { active: false, nextCheck: 0, commandedAt: 0, lastTickAt: 0, pendingT: 0, pending: {}, flushing: false, checking: false, startedAt: 0, requestedAt: 0, firstFrameAt: 0, firstTickAt: 0, tickTimes: [], lastRecordedAt: 0 };
+      s = { active: false, nextCheck: 0, commandedAt: 0, lastTickAt: 0, pendingT: 0, pending: {}, flushing: false, checking: false, firstCommandAt: 0, startedAt: 0, requestedAt: 0, firstFrameAt: 0, firstTickAt: 0, tickTimes: [], lastRecordedAt: 0 };
       this.states.set(eq, s);
     }
     return s;
@@ -98,7 +100,7 @@ export class LiveRelay {
   onFrame(equipmentId: string, tMs: number, values: Record<string, number>): void {
     const s = this.state(equipmentId);
     if (!s.active) return;
-    if (s.firstFrameAt === 0 && s.commandedAt !== 0) s.firstFrameAt = this.d.now();
+    if (s.firstFrameAt === 0 && s.firstCommandAt !== 0) s.firstFrameAt = this.d.now();
     Object.assign(s.pending, values);
     s.pendingT = Math.max(s.pendingT, tMs);
     if (this.d.now() - s.lastTickAt >= TICK_EVERY_MS) void this.flush(equipmentId, s);
@@ -141,8 +143,8 @@ export class LiveRelay {
     const diff = (a: number, b: number) => (a !== 0 && b !== 0 ? Math.max(0, Math.round(a - b)) : null);
     return {
       startedAt: s.startedAt,
-      requestToCommandMs: diff(s.commandedAt, s.requestedAt),
-      commandToFirstFrameMs: diff(s.firstFrameAt, s.commandedAt),
+      requestToCommandMs: diff(s.firstCommandAt, s.requestedAt),
+      commandToFirstFrameMs: diff(s.firstFrameAt, s.firstCommandAt),
       firstFrameToTickMs: diff(s.firstTickAt, s.firstFrameAt),
       requestToFirstTickMs: diff(s.firstTickAt, s.requestedAt),
       ticks: s.tickTimes.length,
@@ -184,7 +186,10 @@ export class LiveRelay {
           const first = s.commandedAt === 0;
           if (first) await this.beginTiming(equipmentId, s, now);
           const sent = await this.command(equipmentId, LIVE_SECONDS, now);
-          if (sent) s.commandedAt = this.d.now();
+          if (sent) {
+            s.commandedAt = this.d.now();
+            if (first) s.firstCommandAt = s.commandedAt;
+          }
         }
       } else if (s.commandedAt !== 0) {
         s.active = false;
@@ -205,6 +210,7 @@ export class LiveRelay {
   /** A new session: when was it asked for (the database's request time), and when did the hub see it. */
   private async beginTiming(equipmentId: string, s: State, now: number): Promise<void> {
     s.startedAt = now;
+    s.firstCommandAt = 0;
     s.firstFrameAt = 0;
     s.firstTickAt = 0;
     s.tickTimes = [];

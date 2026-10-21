@@ -238,3 +238,24 @@ describe("Go Live without delays (T13)", () => {
     expect(store.ticks).toHaveLength(2);
   });
 });
+
+describe("the timing of a long session (T13)", () => {
+  it("is measured from the first command, not moved on by the renewals every 30 seconds", async () => {
+    store.watching = true;
+    store.until = nowMs + 75_000 - 1000;
+    await svc.wakeLive(EQ);
+    nowMs += 200;
+    await frame(1000);
+    await new Promise((r) => setTimeout(r, 5));
+    for (let i = 0; i < 4; i++) {
+      await step(31_000); // four renewals
+      await frame(1000 + i);
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    const t = store.timings.at(-1)!;
+    expect(t.requestToCommandMs).toBe(1000);
+    expect(t.commandToFirstFrameMs).toBe(200);
+    expect(t.requestToFirstTickMs).toBe(1200);
+    expect(t.ticks).toBeGreaterThan(3);
+  });
+});
