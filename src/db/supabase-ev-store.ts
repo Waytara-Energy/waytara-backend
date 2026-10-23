@@ -106,8 +106,15 @@ export class SupabaseEvStore implements EvStore {
     return { pv_w: numOrNull(v.pv_w), battery_w: numOrNull(v.battery_w), grid_w: numOrNull(v.grid_w), load_w: numOrNull(v.load_w), age_s: numOrNull(v.age_s) ?? Infinity };
   }
 
-  async heartbeat(equipmentId: string, firmware: string | null): Promise<void> {
-    await this.db.call("gw_report_heartbeat", { p_equipment: equipmentId, p_fw_version: firmware, p_heartbeat_s: 30 });
+  async heartbeat(equipmentId: string, firmware: string | null, opts?: { heartbeatS?: number; online?: boolean }): Promise<void> {
+    // a charger behind a monitoring unit is reported at the unit's 10-second rhythm and, like an inverter, as "not answering" when the unit is
+    // alive but the charger is not (the database turns that into the cause-aware status)
+    await this.db.call("gw_report_heartbeat", {
+      p_equipment: equipmentId,
+      p_fw_version: firmware,
+      p_heartbeat_s: opts?.heartbeatS ?? 30,
+      ...(opts?.online !== undefined ? { p_inverter_online: opts.online } : {}),
+    });
   }
 
   async access(actor: string, equipmentId: string): Promise<"staff" | "owner" | null> {

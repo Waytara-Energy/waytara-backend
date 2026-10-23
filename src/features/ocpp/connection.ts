@@ -326,7 +326,8 @@ export class OcppConnection {
     if (!force && this.now() - this.lastDbHeartbeat < DB_HEARTBEAT_EVERY_MS) return;
     this.lastDbHeartbeat = this.now();
     try {
-      await this.d.store.heartbeat(this.info.equipmentId, this.firmware);
+      // a charger that is connected through a monitoring unit (keyId "unit") is reported at the unit's rhythm, as online (see bridge.ts)
+      await this.d.store.heartbeat(this.info.equipmentId, this.firmware, this.info.keyId === "unit" ? { heartbeatS: 10, online: true } : undefined);
     } catch (error) {
       this.d.log.warn({ equipmentId: this.info.equipmentId, err: error instanceof Error ? error.message : String(error) }, "could not store the charger heartbeat");
     }

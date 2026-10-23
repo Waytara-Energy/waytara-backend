@@ -208,6 +208,7 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
         ...(isLiveStore(store) ? { liveStore: store } : {}),
         onRotation: (id, type, rotationId, error) => void rotation.current?.onUnitEvent(id, type, rotationId, error),
         onOcpp: (id, body) => void bridge.current?.onUp(id, body),
+        onUnitHeartbeat: (id) => void bridge.current?.onUnitHeartbeat(id),
       });
       ingest.current = service;
       if (ocppHub && evStore) {

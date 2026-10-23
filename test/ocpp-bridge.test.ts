@@ -74,6 +74,19 @@ describe("a charger on a unit's own Wi-Fi", () => {
     await until(() => !hub.get(CH));
   });
 
+  it("reports the unit's chargers at the unit's rhythm: online while connected, not answering when not", async () => {
+    const { bridge, ev, hub } = setup();
+    await bridge.onUnitHeartbeat(GW);
+    // added to the unit but not connected: the unit is alive and the charger is not answering
+    expect(ev.heartbeats.at(-1)).toMatchObject({ equipmentId: CH, heartbeatS: 10, online: false });
+    await bridge.onUp(GW, { t: "open", cp: "CP1" });
+    await until(() => !!hub.get(CH));
+    await bridge.onUp(GW, { t: "frame", cp: "CP1", f: JSON.stringify([2, "h1", "Heartbeat", {}]) });
+    await new Promise((r) => setTimeout(r, 30));
+    await bridge.onUnitHeartbeat(GW);
+    expect(ev.heartbeats.at(-1)).toMatchObject({ equipmentId: CH, heartbeatS: 10, online: true });
+  });
+
   it("ignores messages of the wrong shape", async () => {
     const { bridge, down } = setup();
     await bridge.onUp(GW, { t: "nonsense", cp: "CP1" });

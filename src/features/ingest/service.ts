@@ -46,6 +46,8 @@ export interface IngestDeps {
   onRotation?: (equipmentId: string, type: "rotate_staged" | "rotate_failed", id: string | undefined, error: string | undefined) => void;
   /** a message of a charger that is connected to the unit's own Wi-Fi (already opened and authenticated; see features/ocpp/bridge.ts) */
   onOcpp?: (equipmentId: string, body: unknown) => void;
+  /** the unit checked in (every 10 s): the devices behind it are reported at the same rhythm */
+  onUnitHeartbeat?: (equipmentId: string) => void;
 }
 
 const ACK_LAG_S = 120;
@@ -336,6 +338,7 @@ export class IngestService {
     const h = parsed.data;
     const nowMs = this.now();
     s.lastHeartbeatAt = nowMs;
+    this.d.onUnitHeartbeat?.(s.equipmentId);
     const simulated = h.simulated === true;
     if (simulated !== s.simulated) {
       s.simulated = simulated;

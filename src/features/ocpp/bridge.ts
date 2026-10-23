@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { z } from "zod";
 import type { OcppHub } from "./hub.js";
-import type { EvStore } from "./store.js";
+import type { EvStore, GatewayCharger } from "./store.js";
 
 /**
  * A charger that is connected to a monitoring unit's own Wi-Fi (not to the internet) reaches the hub through the unit: the unit keeps the
@@ -27,8 +27,8 @@ export const upBody = z.object({
 export type OcppUp = z.infer<typeof upBody>;
 
 export interface BridgeDeps {
-  hub: Pick<OcppHub, "attach">;
-  store: Pick<EvStore, "gatewayCharger">;
+  hub: Pick<OcppHub, "attach" | "get">;
+  store: Pick<EvStore, "gatewayCharger" | "gatewayChargers" | "heartbeat">;
   /** seals and publishes a message for a unit; false when it could not be sent */
   send: (gatewayId: string, body: Record<string, unknown>) => Promise<boolean>;
   /** has this unit checked in lately? */
@@ -70,6 +70,7 @@ export class VirtualSocket extends EventEmitter {
 export class OcppBridge {
   private readonly sockets = new Map<string, VirtualSocket>();
   private timer: NodeJS.Timeout | undefined;
+  private readonly lists = new Map<string, { at: number; list: GatewayCharger[] }>();
 
   constructor(private readonly d: BridgeDeps) {}
 
@@ -123,6 +124,29 @@ export class OcppBridge {
       }
     } catch (error) {
       this.d.log.warn({ equipmentId: gatewayId, charger: m.cp, err: error instanceof Error ? error.message : String(error) }, "ocpp bridge message failed");
+    }
+  }
+
+  /**
+   * The unit's own check-in (every 10 seconds) is the pulse of everything behind it: each charger added to the unit gets the same check-in, at the
+   * same rhythm, as the inverter. It is "online" while its connection through the unit is open and it spoke in the last minute; otherwise the unit
+   * is alive but the charger is not answering, which the status logic treats exactly like an inverter that does not answer its unit.
+   */
+  async onUnitHeartbeat(gatewayId: string): Promise<void> {
+    try {
+      const cached = this.lists.get(gatewayId);
+      let list = cached?.list ?? [];
+      if (!cached || Date.now() - cached.at > 60_000) {
+        list = await this.d.store.gatewayChargers(gatewayId);
+        this.lists.set(gatewayId, { at: Date.now(), list });
+      }
+      for (const c of list) {
+        const conn = this.d.hub.get(c.equipmentId);
+        const online = !!conn && this.sockets.has(this.key(gatewayId, c.chargePointId)) && Date.now() - conn.lastMessageAt < 60_000;
+        await this.d.store.heartbeat(c.equipmentId, null, { heartbeatS: 10, online }).catch((error: unknown) => this.d.log.warn({ equipmentId: c.equipmentId, err: error instanceof Error ? error.message : String(error) }, "could not store a charger heartbeat"));
+      }
+    } catch (error) {
+      this.d.log.warn({ equipmentId: gatewayId, err: error instanceof Error ? error.message : String(error) }, "could not list the unit's chargers");
     }
   }
 

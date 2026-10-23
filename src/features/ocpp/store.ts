@@ -47,7 +47,7 @@ export interface EvStore {
   event(equipmentId: string, sessionId: string | null, ts: string, kind: string, detail: Record<string, unknown>): Promise<void>;
   siteFigures(equipmentId: string): Promise<(SiteFigures & { age_s: number }) | null>;
   /** the charger checked in: feeds the same status verdict the inverter gateways use (online / offline) */
-  heartbeat(equipmentId: string, firmware: string | null): Promise<void>;
+  heartbeat(equipmentId: string, firmware: string | null, opts?: { heartbeatS?: number; online?: boolean }): Promise<void>;
   /** may this person send commands to this charger, and as whom */
   access(actor: string, equipmentId: string): Promise<"staff" | "owner" | null>;
   /** may this person manage this monitoring unit (and so add chargers to it), and as whom */
