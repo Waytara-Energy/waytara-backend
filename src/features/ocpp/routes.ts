@@ -154,6 +154,68 @@ export async function registerOcppRoutes(app: FastifyInstance, d: OcppRouteDeps)
     return { removed: await d.store.removeGatewayCharger(gateway, cp) };
   });
 
+  // ---- the charger's OCPP configuration (read: the owner and staff; change: staff only, a short list of keys, each checked before it is sent)
+
+  const KEY = /^[A-Za-z0-9]{1,50}$/;
+  const MEASURANDS = new Set(["Energy.Active.Import.Register", "Power.Active.Import", "Voltage", "Current.Import", "Current.Offered", "SoC", "Temperature"]);
+  const intIn = (min: number, max: number) => (v: string) => /^\d{1,6}$/.test(v) && Number(v) >= min && Number(v) <= max;
+  /** The keys staff may change, and what a value of each must look like. */
+  const WRITABLE: Record<string, { check: (v: string) => boolean; rule: string }> = {
+    HeartbeatInterval: { check: intIn(5, 3600), rule: "a whole number of seconds from 5 to 3600" },
+    MeterValueSampleInterval: { check: intIn(0, 3600), rule: "a whole number of seconds from 0 to 3600" },
+    ClockAlignedDataInterval: { check: intIn(0, 86400), rule: "a whole number of seconds from 0 to 86400" },
+    ConnectionTimeOut: { check: intIn(5, 600), rule: "a whole number of seconds from 5 to 600" },
+    MeterValuesSampledData: {
+      check: (v) => {
+        const parts = v.split(",");
+        return parts.length >= 1 && parts.length <= MEASURANDS.size && new Set(parts).size === parts.length && parts.every((m) => MEASURANDS.has(m));
+      },
+      rule: `a comma list of ${[...MEASURANDS].join(", ")}`,
+    },
+    StopTransactionOnEVSideDisconnect: { check: (v) => v === "true" || v === "false", rule: "true or false" },
+  };
+  const configQuery = z.object({
+    keys: z
+      .string()
+      .max(1100)
+      .optional()
+      .transform((v) => (v === undefined || v === "" ? [] : v.split(",")))
+      .pipe(z.array(z.string().regex(KEY)).max(20)),
+  });
+  const configBody = z.object({ key: z.string().regex(KEY), value: z.string().max(500) });
+  const CHANGE_STATUSES = new Set(["Accepted", "Rejected", "RebootRequired", "NotSupported"]);
+
+  app.get("/v1/ev/:equipment/configuration", { ...signedIn, config: limited }, async (request) => {
+    const { equipment } = parse(id, request.params);
+    const { keys } = parse(configQuery, request.query);
+    const r = await command(request, equipment, "get-configuration", "GetConfiguration", keys.length > 0 ? { key: keys } : {});
+    const detail = (r.detail ?? {}) as { configurationKey?: { key?: unknown; value?: unknown; readonly?: unknown }[]; unknownKey?: unknown[] };
+    return {
+      configuration: (Array.isArray(detail.configurationKey) ? detail.configurationKey : [])
+        .filter((c) => typeof c.key === "string")
+        .map((c) => ({ key: c.key as string, value: typeof c.value === "string" ? c.value : c.value === undefined || c.value === null ? null : String(c.value), readonly: c.readonly === true })),
+      unknown: (Array.isArray(detail.unknownKey) ? detail.unknownKey : []).filter((k): k is string => typeof k === "string"),
+    };
+  });
+
+  app.post("/v1/ev/:equipment/configuration", { ...signedIn, config: limited }, async (request) => {
+    const { equipment } = parse(id, request.params);
+    const b = parse(configBody, request.body);
+    if ((await d.store.access(request.user!.id, equipment)) !== "staff") throw notFound();
+    const rule = WRITABLE[b.key];
+    if (!rule) throw badRequest(`That setting cannot be changed from here. Allowed: ${Object.keys(WRITABLE).join(", ")}.`);
+    if (!rule.check(b.value)) throw badRequest(`${b.key} must be ${rule.rule}.`);
+    const conn = d.hub.get(equipment);
+    if (!conn) throw new AppError(409, "offline", "The charger is not connected right now.");
+    await d.store.event(equipment, null, new Date().toISOString(), "command", { command: "change-configuration", by: request.user!.id, key: b.key, value: b.value }).catch(() => undefined);
+    try {
+      const r = (await conn.call("ChangeConfiguration", { key: b.key, value: b.value })) as { status?: string };
+      return { status: typeof r?.status === "string" && CHANGE_STATUSES.has(r.status) ? r.status : "Rejected" };
+    } catch (error) {
+      throw new AppError(504, "no_answer", error instanceof Error ? error.message : "The charger did not answer.");
+    }
+  });
+
   app.get("/v1/ev/:equipment/status", { ...signedIn, config: limited }, async (request) => {
     const { equipment } = parse(id, request.params);
     await allowed(request, equipment);
