@@ -50,4 +50,20 @@ export interface EvStore {
   heartbeat(equipmentId: string, firmware: string | null): Promise<void>;
   /** may this person send commands to this charger, and as whom */
   access(actor: string, equipmentId: string): Promise<"staff" | "owner" | null>;
+  /** may this person manage this monitoring unit (and so add chargers to it), and as whom */
+  gatewayAccess(actor: string, gatewayId: string): Promise<"staff" | "owner" | null>;
+  /** the charger equipment that a unit's charger name belongs to (a charger added to that unit), or null */
+  gatewayCharger(gatewayId: string, chargePointId: string): Promise<string | null>;
+  /** adds a charger to a unit: a new charger equipment at the unit's site (or an existing one moved there), under this charger name */
+  addGatewayCharger(a: { gatewayId: string; actor: string; chargePointId: string; label: string | null; existingEquipmentId: string | null }): Promise<GatewayCharger>;
+  /** the chargers added to a unit */
+  gatewayChargers(gatewayId: string): Promise<GatewayCharger[]>;
+  /** takes a charger off a unit (the equipment and its history stay) */
+  removeGatewayCharger(gatewayId: string, chargePointId: string): Promise<boolean>;
+}
+
+export interface GatewayCharger {
+  equipmentId: string;
+  chargePointId: string;
+  label: string | null;
 }

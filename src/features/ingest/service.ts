@@ -44,6 +44,8 @@ export interface IngestDeps {
   liveStore?: LiveStore;
   /** a unit's answer to a key change (T11): it has the new key aside, or it could not take it */
   onRotation?: (equipmentId: string, type: "rotate_staged" | "rotate_failed", id: string | undefined, error: string | undefined) => void;
+  /** a message of a charger that is connected to the unit's own Wi-Fi (already opened and authenticated; see features/ocpp/bridge.ts) */
+  onOcpp?: (equipmentId: string, body: unknown) => void;
 }
 
 const ACK_LAG_S = 120;
@@ -142,13 +144,14 @@ export class IngestService {
         this.d.log.info({ equipmentId, state: payload.toString("utf8").slice(0, 16) }, "board presence");
         return;
       }
-      if (name !== "data" && name !== "hb" && name !== "evt") return;
+      if (name !== "data" && name !== "hb" && name !== "evt" && name !== "ocpp") return;
       const s = await this.session(equipmentId);
       if (!s) return;
       const opened = await this.open(s, name, payload);
       if (!opened) return;
       if (name === "data") await this.onData(s, opened.body);
       else if (name === "hb") await this.onHeartbeat(s, opened.body);
+      else if (name === "ocpp") this.d.onOcpp?.(equipmentId, opened.body);
       else await this.onEvent(s, opened.body);
     } catch (error) {
       this.d.log.warn({ equipmentId, name, err: error instanceof Error ? error.message : String(error) }, "up message failed");
@@ -228,7 +231,7 @@ export class IngestService {
 
   // ---- opening sealed messages
 
-  private async open(s: Session, name: "data" | "hb" | "evt", payload: Buffer): Promise<{ body: unknown } | null> {
+  private async open(s: Session, name: "data" | "hb" | "evt" | "ocpp", payload: Buffer): Promise<{ body: unknown } | null> {
     const keys = await this.d.keys.get(s.equipmentId);
     if (keys.length === 0) return null;
     try {
@@ -396,6 +399,20 @@ export class IngestService {
     return this.sendCommand(equipmentId, body);
   }
 
+  /** A message for a charger on a unit's own Wi-Fi (the unit passes it on word for word). False when it could not be sent. */
+  async sendOcpp(equipmentId: string, body: Record<string, unknown>): Promise<boolean> {
+    const s = this.sessions.get(equipmentId);
+    if (!s) return false;
+    const msg = await this.sealDown(s, "ocpp", body);
+    if (!msg) return false;
+    try {
+      await this.d.publish(equipmentId, dnTopic(equipmentId, "ocpp"), msg, false);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private async sendCommand(equipmentId: string, body: Record<string, unknown>): Promise<boolean> {
     const s = this.sessions.get(equipmentId);
     if (!s) return false;
@@ -411,7 +428,7 @@ export class IngestService {
 
   // ---- downlink
 
-  private async sealDown(s: Session, name: "ack" | "map" | "cmd", body: unknown): Promise<Buffer | null> {
+  private async sealDown(s: Session, name: "ack" | "map" | "cmd" | "ocpp", body: unknown): Promise<Buffer | null> {
     const keys = await this.d.keys.get(s.equipmentId);
     const k = keys.find((x) => x.keyId === s.lastKeyRef) ?? keys[0];
     if (!k) return null;

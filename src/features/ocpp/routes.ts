@@ -25,7 +25,7 @@ const NAME = /^[A-Za-z0-9._:-]{1,64}$/;
 export interface OcppRouteDeps {
   hub: OcppHub;
   registry: ChargerRegistry;
-  store: Pick<EvStore, "access" | "event">;
+  store: Pick<EvStore, "access" | "event" | "gatewayAccess" | "gatewayChargers" | "addGatewayCharger" | "removeGatewayCharger">;
   log: { info(o: object, m: string): void; warn(o: object, m: string): void };
   /** the recent messages of each charger, for staff */
   frames?: FrameLog;
@@ -114,6 +114,45 @@ export async function registerOcppRoutes(app: FastifyInstance, d: OcppRouteDeps)
     if (!r.success) throw badRequest("The request did not match the expected shape", r.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })));
     return r.data;
   };
+
+  // ---- the chargers of a monitoring unit (they connect to the unit's own Wi-Fi; see bridge.ts)
+
+  const gw = z.object({ gateway: z.uuid() });
+  async function manageUnit(request: FastifyRequest, gateway: string): Promise<void> {
+    if (!(await d.store.gatewayAccess(request.user!.id, gateway))) throw notFound();
+  }
+
+  app.get("/v1/ev/gateways/:gateway/chargers", { ...signedIn, config: limited }, async (request) => {
+    const { gateway } = parse(gw, request.params);
+    await manageUnit(request, gateway);
+    const list = await d.store.gatewayChargers(gateway);
+    return {
+      chargers: list.map((c) => ({ equipment_id: c.equipmentId, charge_point_id: c.chargePointId, label: c.label, connected: !!d.hub.get(c.equipmentId), last_message_at: d.hub.get(c.equipmentId) ? new Date(d.hub.get(c.equipmentId)!.lastMessageAt).toISOString() : null })),
+    };
+  });
+
+  app.post("/v1/ev/gateways/:gateway/chargers", { ...signedIn, config: limited }, async (request, reply) => {
+    const { gateway } = parse(gw, request.params);
+    const b = parse(z.object({ charge_point_id: z.string().regex(NAME), label: z.string().trim().max(80).optional(), existing_equipment_id: z.uuid().optional() }), request.body);
+    await manageUnit(request, gateway);
+    try {
+      const c = await d.store.addGatewayCharger({ gatewayId: gateway, actor: request.user!.id, chargePointId: b.charge_point_id, label: b.label ?? null, existingEquipmentId: b.existing_equipment_id ?? null });
+      reply.status(201);
+      return { equipment_id: c.equipmentId, charge_point_id: c.chargePointId, label: c.label };
+    } catch (error) {
+      const m = error instanceof Error ? error.message : "";
+      if (/already/i.test(m)) throw new AppError(409, "already_added", "That charger name or charger is already added to a unit.");
+      if (/not allowed|only staff/i.test(m)) throw notFound();
+      throw new AppError(502, "not_added", "The charger could not be added right now.");
+    }
+  });
+
+  app.delete("/v1/ev/gateways/:gateway/chargers/:cp", { ...signedIn, config: limited }, async (request) => {
+    const { gateway } = parse(gw, request.params);
+    const { cp } = parse(z.object({ cp: z.string().regex(NAME) }), request.params);
+    await manageUnit(request, gateway);
+    return { removed: await d.store.removeGatewayCharger(gateway, cp) };
+  });
 
   app.get("/v1/ev/:equipment/status", { ...signedIn, config: limited }, async (request) => {
     const { equipment } = parse(id, request.params);

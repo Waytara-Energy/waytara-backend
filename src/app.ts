@@ -9,6 +9,7 @@ import { Broker } from "./features/broker/broker.js";
 import { KeyCache } from "./features/broker/key-cache.js";
 import { FrameArchive, startFrameArchive } from "./features/ocpp/frame-archive.js";
 import { FrameLog } from "./features/ocpp/frame-log.js";
+import { OcppBridge } from "./features/ocpp/bridge.js";
 import { OcppHub } from "./features/ocpp/hub.js";
 import { ChargerRegistry } from "./features/ocpp/registry.js";
 import { registerOcppRoutes } from "./features/ocpp/routes.js";
@@ -117,6 +118,7 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
 
     const objectStore = options.deps?.objectStore ?? (config.r2 ? new R2ObjectStore(config.r2) : undefined);
 
+    let ocppHub: OcppHub | undefined;
     // EV chargers (OCPP 1.6-J): on whenever the database is, unless switched off
     const evStore = options.deps?.evStore ?? (config.ocppEnabled && db instanceof SupabaseGatewayDb ? new SupabaseEvStore(db) : undefined);
     if (evStore) {
@@ -133,6 +135,7 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
           archive?.add(equipmentId, direction, raw);
         },
       });
+      ocppHub = hub;
       await registerOcppRoutes(app, { hub, registry, store: evStore, log: app.log, frames, ...(archive ? { archive } : {}) });
       if (archive) {
         const running = startFrameArchive(archive, app.log);
@@ -165,6 +168,7 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
         void db.touchKey(keyId, ip).catch(() => undefined);
       };
       const ingest: { current?: IngestService } = {}; // the broker is made first, the intake needs the broker
+      const bridge: { current?: OcppBridge } = {}; // chargers on a unit's own Wi-Fi (needs the intake to send)
       const rotation: { current?: RotationService } = {}; // the key change needs the intake and the broker
       const broker = new Broker({
         keys,
@@ -203,8 +207,14 @@ export async function buildApp(config: Config, options: BuildOptions = {}): Prom
         ...(isSettingsStore(store) ? { settingsStore: store, allowUnverifiedWrites: config.allowUnverifiedWrites } : {}),
         ...(isLiveStore(store) ? { liveStore: store } : {}),
         onRotation: (id, type, rotationId, error) => void rotation.current?.onUnitEvent(id, type, rotationId, error),
+        onOcpp: (id, body) => void bridge.current?.onUp(id, body),
       });
       ingest.current = service;
+      if (ocppHub && evStore) {
+        bridge.current = new OcppBridge({ hub: ocppHub, store: evStore, send: (id, body) => service.sendOcpp(id, body), alive: (id) => service.unitStatus(id)?.alive === true, log: app.log });
+        bridge.current.start();
+        app.addHook("onClose", async () => bridge.current?.stop());
+      }
       service.start(2000);
       await registerIntervalRoutes(app, { db, reload: (equipmentId) => service.reloadProfile(equipmentId) });
       await registerReadRateRoutes(app, { db, reload: (equipmentId) => service.reloadProfile(equipmentId) });

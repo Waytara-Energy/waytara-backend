@@ -1,4 +1,4 @@
-import type { ActiveSession, ChargerKeyRow, EvStore, SessionRef } from "../src/features/ocpp/store.js";
+import type { ActiveSession, ChargerKeyRow, EvStore, GatewayCharger, SessionRef } from "../src/features/ocpp/store.js";
 import type { SessionSummary, SiteFigures, StoredSample } from "../src/features/ocpp/split.js";
 
 export interface FakeSession {
@@ -107,5 +107,27 @@ export class FakeEvStore implements EvStore {
   }
   async access(actor: string, equipmentId: string) {
     return this.access_.get(`${actor}|${equipmentId}`) ?? null;
+  }
+
+  /** the chargers added to units: gateway|charge point -> charger equipment */
+  bindings = new Map<string, GatewayCharger>();
+  async gatewayAccess(actor: string, gatewayId: string) {
+    return this.access_.get(`${actor}|${gatewayId}`) ?? null;
+  }
+  async gatewayCharger(gatewayId: string, chargePointId: string) {
+    return this.bindings.get(`${gatewayId}|${chargePointId}`)?.equipmentId ?? null;
+  }
+  async addGatewayCharger(a: { gatewayId: string; actor: string; chargePointId: string; label: string | null; existingEquipmentId: string | null }) {
+    const key = `${a.gatewayId}|${a.chargePointId}`;
+    if (this.bindings.has(key)) throw new Error("already added");
+    const c: GatewayCharger = { equipmentId: a.existingEquipmentId ?? `00000000-0000-4000-8000-${String(this.bindings.size + 1).padStart(12, "0")}`, chargePointId: a.chargePointId, label: a.label ?? "EV charger" };
+    this.bindings.set(key, c);
+    return c;
+  }
+  async gatewayChargers(gatewayId: string) {
+    return [...this.bindings.entries()].filter(([k]) => k.startsWith(`${gatewayId}|`)).map(([, v]) => v);
+  }
+  async removeGatewayCharger(gatewayId: string, chargePointId: string) {
+    return this.bindings.delete(`${gatewayId}|${chargePointId}`);
   }
 }

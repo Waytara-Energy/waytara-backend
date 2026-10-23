@@ -1,13 +1,13 @@
 /**
  * MQTT topics (plan section 10.1):  wt/v1/<equipmentId>/<up|dn>/<name>
- *   up/data  up/hb  up/evt  up/state     a board publishes
- *   dn/ack   dn/cmd dn/map               the backend publishes, the board subscribes
+ *   up/data  up/hb  up/evt  up/state  up/ocpp     a board publishes (ocpp: the messages of a charger on the unit's own Wi-Fi)
+ *   dn/ack   dn/cmd dn/map  dn/ocpp               the backend publishes, the board subscribes
  */
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const TOPIC = new RegExp(`^wt/v1/(${UUID})/(up|dn)/([a-z]+)$`, "i");
 
-export const UP_NAMES = ["data", "hb", "evt", "state"] as const;
-export const DN_NAMES = ["ack", "cmd", "map"] as const;
+export const UP_NAMES = ["data", "hb", "evt", "state", "ocpp"] as const;
+export const DN_NAMES = ["ack", "cmd", "map", "ocpp"] as const;
 export type UpName = (typeof UP_NAMES)[number];
 export type DnName = (typeof DN_NAMES)[number];
 

@@ -1,6 +1,6 @@
 import { DbError } from "./gateway-db.js";
 import type { RpcCaller } from "./supabase-ingest-store.js";
-import type { ActiveSession, ChargerKeyRow, EvStore, SessionRef } from "../features/ocpp/store.js";
+import type { ActiveSession, ChargerKeyRow, EvStore, GatewayCharger, SessionRef } from "../features/ocpp/store.js";
 import type { SessionSummary, SiteFigures, StoredSample } from "../features/ocpp/split.js";
 
 /** The OCPP server's storage: the gw_ev_* functions of migration 20261016000000_ev_ocpp.sql, called as the backend's service user. */
@@ -113,6 +113,34 @@ export class SupabaseEvStore implements EvStore {
   async access(actor: string, equipmentId: string): Promise<"staff" | "owner" | null> {
     const v = await this.db.call("gw_ev_access", { p_actor: actor, p_equipment: equipmentId });
     return v === "staff" || v === "owner" ? v : null;
+  }
+
+  async gatewayAccess(actor: string, gatewayId: string): Promise<"staff" | "owner" | null> {
+    const v = await this.db.call("gw_gateway_access", { p_actor: actor, p_equipment: gatewayId });
+    return v === "staff" || v === "owner" ? v : null;
+  }
+
+  async gatewayCharger(gatewayId: string, chargePointId: string): Promise<string | null> {
+    const v = await this.db.call("gw_gateway_charger", { p_gateway: gatewayId, p_cp: chargePointId });
+    return typeof v === "string" ? v : null;
+  }
+
+  async addGatewayCharger(a: { gatewayId: string; actor: string; chargePointId: string; label: string | null; existingEquipmentId: string | null }): Promise<GatewayCharger> {
+    const r = rows(await this.db.call("gw_add_gateway_charger", { p_gateway: a.gatewayId, p_actor: a.actor, p_cp: a.chargePointId, p_label: a.label, p_existing: a.existingEquipmentId }))[0];
+    if (!r) throw new DbError("invalid", "the charger was not added");
+    return { equipmentId: String(r.out_equipment_id), chargePointId: String(r.out_charge_point_id), label: typeof r.out_label === "string" ? r.out_label : null };
+  }
+
+  async gatewayChargers(gatewayId: string): Promise<GatewayCharger[]> {
+    return rows(await this.db.call("gw_gateway_chargers", { p_gateway: gatewayId })).map((r) => ({
+      equipmentId: String(r.out_equipment_id),
+      chargePointId: String(r.out_charge_point_id),
+      label: typeof r.out_label === "string" ? r.out_label : null,
+    }));
+  }
+
+  async removeGatewayCharger(gatewayId: string, chargePointId: string): Promise<boolean> {
+    return (await this.db.call("gw_remove_gateway_charger", { p_gateway: gatewayId, p_cp: chargePointId })) === true;
   }
 }
 
