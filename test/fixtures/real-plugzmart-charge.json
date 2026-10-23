@@ -1,0 +1,230 @@
+{
+ "note": "Frames a real Plugzmart 7.4kW charger (charge point WT_PZ_7k_1, firmware 2.2.7) sent to the user's own Python OCPP server on 2026-10-05: the first boot, then one full charge. Calls only, in order.",
+ "chargePoint": "WT_PZ_7k_1",
+ "frames": [
+  {
+   "at": "2026-10-05T12:18:47.794595+00:00",
+   "raw": "[2,\"00001#261005121846874\",\"BootNotification\",{\"chargePointSerialNumber\":\"ME250004\",\"chargePointModel\":\"MERDM12R01XXXX\",\"chargePointVendor\":\"Plugzmart\",\"firmwareVersion\":\"2.2.7\",\"imsi\":\"\",\"iccid\":\"\"}]"
+  },
+  {
+   "at": "2026-10-05T12:18:48.343774+00:00",
+   "raw": "[2,\"10010#2610051218471000\",\"StatusNotification\",{\"connectorId\":1,\"status\":\"Available\",\"timestamp\":\"2026-10-05T12:18:46Z\",\"errorCode\":\"NoError\",\"info\":\"\"}]"
+  },
+  {
+   "at": "2026-10-05T12:33:44.117697+00:00",
+   "raw": "[2,\"10010#261005123342050\",\"StatusNotification\",{\"connectorId\":1,\"status\":\"Preparing\",\"timestamp\":\"2026-10-05T12:33:16Z\",\"errorCode\":\"NoError\",\"info\":\"{}\"}]"
+  },
+  {
+   "at": "2026-10-05T12:33:54.132845+00:00",
+   "raw": "[2,\"11005#261005123352031\",\"StartTransaction\",{\"timestamp\":\"2026-10-05T12:33:42Z\",\"idTag\":\"LOCAL_ADMIN\",\"connectorId\":1,\"meterStart\":52874}]"
+  },
+  {
+   "at": "2026-10-05T12:33:54.629773+00:00",
+   "raw": "[2,\"10010#261005123353541\",\"StatusNotification\",{\"connectorId\":1,\"status\":\"Charging\",\"timestamp\":\"2026-10-05T12:33:52Z\",\"errorCode\":\"NoError\",\"info\":\"{}\"}]"
+  },
+  {
+   "at": "2026-10-05T12:33:54.860711+00:00",
+   "raw": "[2,\"11007#261005123353\",\"MeterValues\",{\"connectorId\":1,\"transactionId\":1003,\"meterValue\":[{\"timestamp\":\"2026-10-05T12:33:53Z\",\"sampledValue\":[{\"value\":\"52.87\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Energy.Active.Import.Register\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"kWh\"},{\"value\":\"0.00\",\"measurand\":\"Power.Active.Import\",\"phase\":\"L1-N\",\"unit\":\"kW\"},{\"value\":\"238.45\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Voltage\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"V\"},{\"value\":\"0.01\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Current.Import\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"A\"}]}]}]"
+  },
+  {
+   "at": "2026-10-05T12:33:55.310333+00:00",
+   "raw": "[2,\"11007#261005123354\",\"MeterValues\",{\"connectorId\":1,\"transactionId\":1003,\"meterValue\":[{\"timestamp\":\"2026-10-05T12:33:53Z\",\"sampledValue\":[{\"value\":\"52.87\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Energy.Active.Import.Register\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"kWh\"},{\"value\":\"0.00\",\"measurand\":\"Power.Active.Import\",\"phase\":\"L1-N\",\"unit\":\"kW\"},{\"value\":\"238.45\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Voltage\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"V\"},{\"value\":\"0.01\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Current.Import\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"A\"}]}]}]"
+  },
+  {
+   "at": "2026-10-05T12:34:06.326683+00:00",
+   "raw": "[2,\"10004#261005123354854\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:34:17.348776+00:00",
+   "raw": "[2,\"10004#261005123354835\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:34:28.481251+00:00",
+   "raw": "[2,\"10004#261005123354741\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:34:39.496752+00:00",
+   "raw": "[2,\"10004#261005123354682\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:34:50.512885+00:00",
+   "raw": "[2,\"10004#261005123354662\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:34:56.790200+00:00",
+   "raw": "[2,\"11007#261005123455\",\"MeterValues\",{\"connectorId\":1,\"transactionId\":1003,\"meterValue\":[{\"timestamp\":\"2026-10-05T12:33:54Z\",\"sampledValue\":[{\"value\":\"53.00\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Energy.Active.Import.Register\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"kWh\"},{\"value\":\"6.93\",\"measurand\":\"Power.Active.Import\",\"phase\":\"L1-N\",\"unit\":\"kW\"},{\"value\":\"229.51\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Voltage\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"V\"},{\"value\":\"30.21\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Current.Import\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"A\"}]}]}]"
+  },
+  {
+   "at": "2026-10-05T12:35:07.806684+00:00",
+   "raw": "[2,\"10004#261005123455364\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:35:18.822946+00:00",
+   "raw": "[2,\"10004#261005123455349\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:35:29.838488+00:00",
+   "raw": "[2,\"10004#261005123455333\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:35:40.854792+00:00",
+   "raw": "[2,\"10004#261005123455313\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:35:51.871414+00:00",
+   "raw": "[2,\"10004#261005123455298\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:35:57.870307+00:00",
+   "raw": "[2,\"11007#261005123556\",\"MeterValues\",{\"connectorId\":1,\"transactionId\":1003,\"meterValue\":[{\"timestamp\":\"2026-10-05T12:34:55Z\",\"sampledValue\":[{\"value\":\"53.10\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Energy.Active.Import.Register\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"kWh\"},{\"value\":\"6.96\",\"measurand\":\"Power.Active.Import\",\"phase\":\"L1-N\",\"unit\":\"kW\"},{\"value\":\"229.01\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Voltage\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"V\"},{\"value\":\"30.40\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Current.Import\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"A\"}]}]}]"
+  },
+  {
+   "at": "2026-10-05T12:36:08.890290+00:00",
+   "raw": "[2,\"10004#261005123556278\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:36:19.909168+00:00",
+   "raw": "[2,\"10004#261005123556258\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:36:30.925327+00:00",
+   "raw": "[2,\"10004#261005123556239\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:36:41.938132+00:00",
+   "raw": "[2,\"10004#261005123556223\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:36:52.953171+00:00",
+   "raw": "[2,\"10004#261005123556203\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:36:59.247844+00:00",
+   "raw": "[2,\"11007#261005123658\",\"MeterValues\",{\"connectorId\":1,\"transactionId\":1003,\"meterValue\":[{\"timestamp\":\"2026-10-05T12:35:56Z\",\"sampledValue\":[{\"value\":\"53.23\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Energy.Active.Import.Register\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"kWh\"},{\"value\":\"6.97\",\"measurand\":\"Power.Active.Import\",\"phase\":\"L1-N\",\"unit\":\"kW\"},{\"value\":\"229.01\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Voltage\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"V\"},{\"value\":\"30.43\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Current.Import\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"A\"}]}]}]"
+  },
+  {
+   "at": "2026-10-05T12:37:10.266678+00:00",
+   "raw": "[2,\"10004#261005123658894\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:37:21.279658+00:00",
+   "raw": "[2,\"10004#261005123658878\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:37:32.295804+00:00",
+   "raw": "[2,\"10004#261005123658858\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:37:43.312171+00:00",
+   "raw": "[2,\"10004#261005123658843\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:37:54.329309+00:00",
+   "raw": "[2,\"10004#261005123658823\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:38:00.575002+00:00",
+   "raw": "[2,\"11007#261005123759\",\"MeterValues\",{\"connectorId\":1,\"transactionId\":1003,\"meterValue\":[{\"timestamp\":\"2026-10-05T12:36:58Z\",\"sampledValue\":[{\"value\":\"53.35\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Energy.Active.Import.Register\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"kWh\"},{\"value\":\"6.94\",\"measurand\":\"Power.Active.Import\",\"phase\":\"L1-N\",\"unit\":\"kW\"},{\"value\":\"230.26\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Voltage\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"V\"},{\"value\":\"30.14\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Current.Import\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"A\"}]}]}]"
+  },
+  {
+   "at": "2026-10-05T12:38:11.584941+00:00",
+   "raw": "[2,\"10004#261005123759564\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:38:22.605619+00:00",
+   "raw": "[2,\"10004#261005123759549\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:38:33.621214+00:00",
+   "raw": "[2,\"10004#261005123759525\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:38:44.637297+00:00",
+   "raw": "[2,\"10004#261005123759509\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:38:55.650703+00:00",
+   "raw": "[2,\"10004#261005123759494\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:39:01.682634+00:00",
+   "raw": "[2,\"11007#261005123900\",\"MeterValues\",{\"connectorId\":1,\"transactionId\":1003,\"meterValue\":[{\"timestamp\":\"2026-10-05T12:37:59Z\",\"sampledValue\":[{\"value\":\"53.47\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Energy.Active.Import.Register\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"kWh\"},{\"value\":\"6.92\",\"measurand\":\"Power.Active.Import\",\"phase\":\"L1-N\",\"unit\":\"kW\"},{\"value\":\"229.05\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Voltage\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"V\"},{\"value\":\"30.22\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Current.Import\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"A\"}]}]}]"
+  },
+  {
+   "at": "2026-10-05T12:39:12.698749+00:00",
+   "raw": "[2,\"10004#261005123900447\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:39:23.714811+00:00",
+   "raw": "[2,\"10004#261005123900427\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:39:34.730326+00:00",
+   "raw": "[2,\"10004#261005123900411\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:39:45.749666+00:00",
+   "raw": "[2,\"10004#261005123900396\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:39:56.765593+00:00",
+   "raw": "[2,\"10004#261005123900372\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:40:02.993047+00:00",
+   "raw": "[2,\"11007#261005124001\",\"MeterValues\",{\"connectorId\":1,\"transactionId\":1003,\"meterValue\":[{\"timestamp\":\"2026-10-05T12:39:00Z\",\"sampledValue\":[{\"value\":\"53.58\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Energy.Active.Import.Register\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"kWh\"},{\"value\":\"6.92\",\"measurand\":\"Power.Active.Import\",\"phase\":\"L1-N\",\"unit\":\"kW\"},{\"value\":\"228.30\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Voltage\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"V\"},{\"value\":\"30.31\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Current.Import\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"A\"}]}]}]"
+  },
+  {
+   "at": "2026-10-05T12:40:13.956829+00:00",
+   "raw": "[2,\"10004#261005124001180\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:40:24.975840+00:00",
+   "raw": "[2,\"10004#261005124001160\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:40:35.991238+00:00",
+   "raw": "[2,\"10004#261005124001141\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:40:47.007356+00:00",
+   "raw": "[2,\"10004#261005124001125\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:40:58.023316+00:00",
+   "raw": "[2,\"10004#261005124001109\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:41:04.088666+00:00",
+   "raw": "[2,\"11007#261005124102\",\"MeterValues\",{\"connectorId\":1,\"transactionId\":1003,\"meterValue\":[{\"timestamp\":\"2026-10-05T12:40:01Z\",\"sampledValue\":[{\"value\":\"53.70\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Energy.Active.Import.Register\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"kWh\"},{\"value\":\"6.91\",\"measurand\":\"Power.Active.Import\",\"phase\":\"L1-N\",\"unit\":\"kW\"},{\"value\":\"228.41\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Voltage\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"V\"},{\"value\":\"30.25\",\"context\":\"Sample.Periodic\",\"format\":\"Raw\",\"measurand\":\"Current.Import\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"A\"}]}]}]"
+  },
+  {
+   "at": "2026-10-05T12:41:15.105286+00:00",
+   "raw": "[2,\"10004#261005124102023\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:41:21.300562+00:00",
+   "raw": "[2,\"11006#261005124120815\",\"StopTransaction\",{\"timestamp\":\"2026-10-05T12:41:18Z\",\"transactionId\":1003,\"reason\":\"Remote\",\"idTag\":\"LOCAL_ADMIN\",\"meterStop\":53724,\"transactionData\":[{\"timestamp\":\"2026-10-05T12:33:42Z\",\"sampledValue\":[{\"value\":\"52.87\",\"context\":\"Transaction.Begin\",\"format\":\"Raw\",\"measurand\":\"Energy.Active.Import.Register\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"kWh\"}]},{\"timestamp\":\"2026-10-05T12:41:18Z\",\"sampledValue\":[{\"value\":\"53.72\",\"context\":\"Transaction.End\",\"format\":\"Raw\",\"measurand\":\"Energy.Active.Import.Register\",\"phase\":\"L1-N\",\"location\":\"Outlet\",\"unit\":\"kWh\"}]}]}]"
+  },
+  {
+   "at": "2026-10-05T12:41:22.781818+00:00",
+   "raw": "[2,\"10010#261005124121333\",\"StatusNotification\",{\"connectorId\":1,\"status\":\"Finishing\",\"timestamp\":\"2026-10-05T12:41:20Z\",\"errorCode\":\"OtherError\",\"vendorId\":\"Plugzmart\",\"vendorErrorCode\":\"RemoteStop\",\"info\":\"{\\\"stopReason\\\":\\\"RemoteStop\\\"}\"}]"
+  },
+  {
+   "at": "2026-10-05T12:41:33.803534+00:00",
+   "raw": "[2,\"10004#261005124121329\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:41:44.821622+00:00",
+   "raw": "[2,\"10004#261005124121309\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:41:55.833139+00:00",
+   "raw": "[2,\"10004#261005124121290\",\"Heartbeat\",{}]"
+  },
+  {
+   "at": "2026-10-05T12:41:57.005246+00:00",
+   "raw": "[2,\"10010#261005124155105\",\"StatusNotification\",{\"connectorId\":1,\"status\":\"Available\",\"timestamp\":\"2026-10-05T12:41:21Z\",\"errorCode\":\"NoError\",\"info\":\"{}\"}]"
+  }
+ ]
+}
