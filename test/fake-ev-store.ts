@@ -24,6 +24,7 @@ export class FakeEvStore implements EvStore {
   samples: { sessionId: string; ts: string; sample: Record<string, unknown> }[] = [];
   events: { equipmentId: string; sessionId: string | null; kind: string; detail: Record<string, unknown> }[] = [];
   heartbeats: { equipmentId: string; firmware: string | null; heartbeatS?: number; online?: boolean }[] = [];
+  latestValues: { equipmentId: string; values: Record<string, { v: number; u?: string }> }[] = [];
   figures: (SiteFigures & { age_s: number }) | null = null;
   access_ = new Map<string, "staff" | "owner">();
   failNext = 0;
@@ -102,6 +103,10 @@ export class FakeEvStore implements EvStore {
   async siteFigures() {
     return this.figures;
   }
+  async latest(equipmentId: string, values: Record<string, { v: number; u?: string }>) {
+    this.latestValues.push({ equipmentId, values });
+  }
+
   async heartbeat(equipmentId: string, firmware: string | null, opts?: { heartbeatS?: number; online?: boolean }) {
     this.heartbeats.push({ equipmentId, firmware, ...opts });
   }

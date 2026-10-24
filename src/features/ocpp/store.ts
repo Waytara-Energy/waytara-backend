@@ -45,6 +45,8 @@ export interface EvStore {
   sessionSamples(sessionId: string): Promise<StoredSample[]>;
   sessionStop(sessionId: string, endedAt: string, meterStopWh: number, reason: string, summary: SessionSummary): Promise<void>;
   event(equipmentId: string, sessionId: string | null, ts: string, kind: string, detail: Record<string, unknown>): Promise<void>;
+  /** the charger's live figures (connector state, power, current, voltage, energy), which the dashboard reads like an inverter's: {key: {v, u}} */
+  latest(equipmentId: string, values: Record<string, { v: number; u?: string }>, ts?: string): Promise<void>;
   siteFigures(equipmentId: string): Promise<(SiteFigures & { age_s: number }) | null>;
   /** the charger checked in: feeds the same status verdict the inverter gateways use (online / offline) */
   heartbeat(equipmentId: string, firmware: string | null, opts?: { heartbeatS?: number; online?: boolean }): Promise<void>;

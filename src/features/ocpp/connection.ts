@@ -78,6 +78,16 @@ interface Pending {
   timer: NodeJS.Timeout;
 }
 
+// The connector state and error as the numbers of the charger's catalogue (waytara.equipment_enum): 0 Available, 1 Preparing, 2 Charging, 3 Suspended,
+// 4 Faulted; a state the catalogue has no number for goes to the nearest one (Finishing is a plug still in: Preparing).
+const CONNECTOR_CODES: Record<string, number> = { Available: 0, Reserved: 0, Preparing: 1, Finishing: 1, Charging: 2, SuspendedEV: 3, SuspendedEVSE: 3, Faulted: 4, Unavailable: 4 };
+const ERROR_CODES: Record<string, number> = {
+  NoError: 0, ConnectorLockFailure: 1, EVCommunicationError: 2, GroundFailure: 3, HighTemperature: 4, InternalError: 5, LocalListConflict: 6,
+  OtherError: 7, OverCurrentFailure: 8, OverVoltage: 9, PowerMeterFailure: 10, PowerSwitchFailure: 11, ReaderFailure: 12, ResetFailure: 13, UnderVoltage: 14, WeakSignal: 15,
+};
+export const connectorCode = (status: string): number => CONNECTOR_CODES[status] ?? 0;
+export const errorCode = (code: string): number => ERROR_CODES[code] ?? 7;
+
 export class OcppConnection {
   readonly connectedAt: number;
   lastMessageAt: number;
@@ -373,6 +383,7 @@ export class OcppConnection {
           this.lastStatus.set(s.connectorId, key);
           await this.record("status", { connector: s.connectorId, status: s.status, error: s.errorCode, info: s.info || undefined, at: this.when(s.timestamp, "status") });
         }
+        if (s.connectorId >= 1) await this.writeLatest({ connector_status: { v: connectorCode(s.status) }, error_code: { v: errorCode(s.errorCode) } });
         this.watchForMissingStop(s.connectorId, s.status);
         return {};
       }
@@ -422,6 +433,7 @@ export class OcppConnection {
         const sessionId = await this.sessionFor(m.connectorId, m.transactionId);
         if (!sessionId) return {}; // meter values outside a transaction are not stored
         for (const entry of m.meterValue) await this.storeSample(sessionId, entry);
+        await this.writeLatestFromSamples(m.meterValue);
         this.checkTarget(m.connectorId, m.transactionId, m.meterValue);
         return {};
       }
@@ -448,6 +460,7 @@ export class OcppConnection {
         const samples = await this.d.store.sessionSamples(sessionId);
         const summary = summarize(samples, meterStart, s.meterStop, Date.parse(startedAt) / 1000, Date.parse(endedAt) / 1000);
         await this.d.store.sessionStop(sessionId, endedAt, s.meterStop, s.reason ?? "Local", summary);
+        await this.writeLatest({ power_active_import_kw: { v: 0, u: "kW" }, current_import_l1_a: { v: 0, u: "A" } });
         await this.record("transaction_stop", { transaction: s.transactionId, reason: s.reason ?? null, energy_kwh: Math.round(s.meterStop - meterStart) / 1000, status: summary.status }, sessionId);
         if (summary.status === "suspect") await this.record("session_suspect", { reason: summary.suspect_reason ?? "" }, sessionId);
         return { idTagInfo: { status: "Accepted" } };
@@ -554,6 +567,27 @@ export class OcppConnection {
       return ref.id;
     }
     return connector === null ? null : (this.open.get(connector)?.sessionId ?? null);
+  }
+
+  /** The live figures the dashboard shows: a failure here never changes what the charger is told. */
+  private async writeLatest(values: Record<string, { v: number; u?: string }>): Promise<void> {
+    try {
+      await this.d.store.latest(this.info.equipmentId, values);
+    } catch {
+      /* the live figures are refreshed by the next message */
+    }
+  }
+
+  private async writeLatestFromSamples(entries: readonly MeterValueEntry[]): Promise<void> {
+    const last = entries[entries.length - 1];
+    if (!last) return;
+    const s = normalizeSample(last.sampledValue);
+    const v: Record<string, { v: number; u?: string }> = {};
+    if (s.power_kw !== undefined) v.power_active_import_kw = { v: s.power_kw, u: "kW" };
+    if (s.current_a_l1 !== undefined) v.current_import_l1_a = { v: s.current_a_l1, u: "A" };
+    if (s.voltage_v_l1 !== undefined) v.voltage_l1_n_v = { v: s.voltage_v_l1, u: "V" };
+    if (s.energy_kwh !== undefined) v.energy_active_import_register_kwh = { v: s.energy_kwh, u: "kWh" };
+    if (Object.keys(v).length > 0) await this.writeLatest(v);
   }
 
   private async storeSample(sessionId: string, entry: MeterValueEntry): Promise<void> {

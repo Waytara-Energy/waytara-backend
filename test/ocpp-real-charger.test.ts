@@ -137,6 +137,20 @@ describe("a real Plugzmart charge, replayed through the OCPP server", () => {
     expect(Math.max(...samples.map((s) => s.energy_kwh ?? 0))).toBeCloseTo(53.72, 1);
   });
 
+  it("keeps the dashboard's live figures: the connector state, then power, current, voltage and energy, and zero power when the charge ends", async () => {
+    const { ev } = await replay();
+    const all = ev.latestValues.filter((x) => x.equipmentId === CH);
+    expect(all.length).toBeGreaterThan(8);
+    expect(all.some((x) => x.values.connector_status?.v === 2)).toBe(true); // Charging
+    expect(all.at(0)?.values.connector_status?.v).toBe(0); // the first thing it says is Available
+    const meter = all.filter((x) => x.values.power_active_import_kw && x.values.power_active_import_kw.v > 6.5);
+    expect(meter.length).toBeGreaterThan(3);
+    expect(meter[0]!.values.voltage_l1_n_v!.v).toBeGreaterThan(200);
+    expect(meter[0]!.values.energy_active_import_register_kwh!.u).toBe("kWh");
+    expect(all.at(-1)?.values.connector_status?.v).toBe(0); // and the last is Available again
+    expect(all.some((x) => x.values.power_active_import_kw?.v === 0)).toBe(true);
+  });
+
   it("does not lose frames that carry the charger's quirks (empty strings, kWh energy but Wh meter start, old status times)", async () => {
     const { calls, answers } = await replay();
     const boot = calls.find((c) => c.action === "BootNotification")!;
