@@ -167,6 +167,8 @@ describe("a real Plugzmart charge, replayed through the OCPP server", () => {
 
   it("configures the charger when it boots: the settings the hub sends are listed so a charger that refuses them is noticed", async () => {
     const { serverCalls } = await replay();
+    // the hub configures a charger half a second after it boots; a fast machine can finish the replay before that, so wait for the three calls
+    await until(() => serverCalls.filter((c) => c.action === "ChangeConfiguration").length >= 3);
     const keys = serverCalls.filter((c) => c.action === "ChangeConfiguration").map((c) => (c.payload as { key: string }).key);
     // The real charger was only ever run by the Python server, which never sent a ChangeConfiguration: how this charger answers them is not known
     // yet. This test answers "Accepted" for them and only pins WHAT the hub asks for.
