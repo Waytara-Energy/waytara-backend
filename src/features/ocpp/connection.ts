@@ -3,6 +3,7 @@ import type { WebSocket } from "ws";
 import { ACTIONS, isAction, type ActionName, type MeterValueEntry } from "./schemas.js";
 import { normalizeSample } from "./measurands.js";
 import { splitSample, summarize, type SiteFigures } from "./split.js";
+import { RetryPool } from "./retry-pool.js";
 import type { EvStore } from "./store.js";
 
 /**
@@ -36,6 +37,14 @@ export interface ConnDeps {
   orphanGraceMs?: number;
   /** how long to wait before asking again to stop a charge that went past its target (default 60 s) */
   cutoffRetryMs?: number;
+  /** database work that failed and is tried again later (see retry-pool.ts); the hub shares one so it outlives a connection */
+  retries?: RetryPool;
+  /** the waits between those tries (tests shorten them) */
+  retryDelaysMs?: number[];
+  /** how long after a charger connects a stop that was asked for while it was out of contact is sent (default 2 s) */
+  queuedStopDelayMs?: number;
+  /** the wait before asking again when the charger did not answer that stop (default 15 s) */
+  queuedStopRetryMs?: number;
 }
 
 /** A session that is running on a connector. */
@@ -110,6 +119,7 @@ export class OcppConnection {
   /** a target asked for with a remote start, waiting for the charge to begin on that connector */
   private pendingTargets = new Map<number, { kwh: number; at: number }>();
   private orphanTimers = new Map<number, NodeJS.Timeout>();
+  private readonly retries: RetryPool;
 
   constructor(
     private readonly d: ConnDeps,
@@ -117,7 +127,13 @@ export class OcppConnection {
     readonly info: ConnInfo,
   ) {
     this.now = d.now ?? Date.now;
+    this.retries = d.retries ?? new RetryPool({ log: d.log, ...(d.retryDelaysMs ? { delaysMs: d.retryDelaysMs } : {}), now: this.now });
     this.connectedAt = this.lastMessageAt = this.now();
+  }
+
+  /** The key of the database work of one charge (its stop, or the closing of it), so the charger's real stop replaces the closing. */
+  private stopKey(transactionId: number): string {
+    return `stop:${this.info.equipmentId}:${transactionId}`;
   }
 
   /** A target (kWh) to apply to the charge that begins next on this connector (a remote start with "charge this many units"). */
@@ -132,24 +148,33 @@ export class OcppConnection {
   /** The sessions that were running before this connection (a restart of the server, or the charger reconnecting) are picked up again. */
   private async restore(): Promise<void> {
     try {
-      const active = await this.d.store.activeSessions(this.info.equipmentId);
-      const newest = new Map<number, (typeof active)[number]>();
-      for (const a of active) {
-        const prev = newest.get(a.connector);
-        if (prev) await this.closeOrphan(a.connector, { transactionId: prev.transactionId, sessionId: prev.id, meterStartWh: prev.meterStartWh, targetKwh: null, cutoffAttempts: 0, cutoffLastAt: 0 }, "superseded");
-        newest.set(a.connector, a);
-      }
-      for (const [connector, a] of newest) {
-        this.open.set(connector, { transactionId: a.transactionId, sessionId: a.id, meterStartWh: a.meterStartWh, targetKwh: a.targetKwh, cutoffAttempts: 0, cutoffLastAt: 0 });
-        this.sessionIds.set(a.transactionId, a.id);
-      }
+      await this.restoreOnce();
     } catch (error) {
-      this.d.log.warn({ equipmentId: this.info.equipmentId, err: error instanceof Error ? error.message : String(error) }, "could not pick up the open sessions");
+      this.d.log.warn({ equipmentId: this.info.equipmentId, err: error instanceof Error ? error.message : String(error) }, "could not pick up the open sessions; trying again");
+      // without them a reading has no session to land on and a charge with a target is not watched: tried again until the database answers
+      this.retries.add(`restore:${this.info.equipmentId}`, 0, async () => {
+        if (!this.closed) await this.restoreOnce();
+      });
     }
   }
 
-  start(): void {
-    this.queue = this.queue.then(() => this.restore());
+  private async restoreOnce(): Promise<void> {
+    const active = await this.d.store.activeSessions(this.info.equipmentId);
+    const newest = new Map<number, (typeof active)[number]>();
+    for (const a of active) {
+      const prev = newest.get(a.connector);
+      if (prev) await this.closeOrphan(a.connector, { transactionId: prev.transactionId, sessionId: prev.id, meterStartWh: prev.meterStartWh, targetKwh: null, cutoffAttempts: 0, cutoffLastAt: 0 }, "superseded");
+      newest.set(a.connector, a);
+    }
+    for (const [connector, a] of newest) {
+      this.open.set(connector, { transactionId: a.transactionId, sessionId: a.id, meterStartWh: a.meterStartWh, targetKwh: a.targetKwh, cutoffAttempts: 0, cutoffLastAt: 0 });
+      this.sessionIds.set(a.transactionId, a.id);
+    }
+  }
+
+  /** `queuedStops`: transactions the person asked to stop while the charger was out of contact; they are sent once it is back. */
+  start(queuedStops: number[] = []): void {
+    this.queue = this.queue.then(() => this.restore()).then(() => this.sendQueuedStops(queuedStops));
     this.ws.on("message", (data) => {
       const raw = typeof data === "string" ? data : Buffer.isBuffer(data) ? data.toString("utf8") : Buffer.concat(data as Buffer[]).toString("utf8");
       this.queue = this.queue.then(() => this.onFrame(raw)).catch((error) => this.d.log.warn({ equipmentId: this.info.equipmentId, err: error instanceof Error ? error.message : String(error) }, "ocpp frame failed"));
@@ -441,28 +466,41 @@ export class OcppConnection {
       case "StopTransaction": {
         const s = p as { meterStop: number; timestamp: string; transactionId: number; reason?: string };
         await this.touch();
-        const sessionId = await this.sessionFor(null, s.transactionId);
+        const endedAt = this.when(s.timestamp, "stop");
+        const known = this.sessionIds.get(s.transactionId) ?? null;
         for (const [c, o] of this.open) {
           if (o.transactionId === s.transactionId) {
             this.open.delete(c);
             this.clearOrphanTimer(c);
           }
         }
-        this.sessionIds.delete(s.transactionId);
-        if (!sessionId) {
-          await this.record("stop_without_session", { transaction: s.transactionId });
-          return { idTagInfo: { status: "Accepted" } };
+        // Everything that touches the database is one piece of work. If the database cannot be reached it is kept and tried again until it
+        // can, and the charger is told "accepted" at once: answering with an error made it resend a few times and then give up, and the
+        // charge stayed open for good (3 Nov 2026, charge 1012).
+        const finish = async () => {
+          const sessionId = known ?? (await this.sessionFor(null, s.transactionId));
+          if (!sessionId) {
+            await this.record("stop_without_session", { transaction: s.transactionId });
+            return;
+          }
+          const ref = await this.d.store.sessionByTransaction(this.info.equipmentId, s.transactionId);
+          const startedAt = ref?.startedAt ?? endedAt;
+          const meterStart = ref?.meterStartWh ?? s.meterStop;
+          const samples = await this.d.store.sessionSamples(sessionId);
+          const summary = summarize(samples, meterStart, s.meterStop, Date.parse(startedAt) / 1000, Date.parse(endedAt) / 1000);
+          await this.d.store.sessionStop(sessionId, endedAt, s.meterStop, s.reason ?? "Local", summary);
+          this.sessionIds.delete(s.transactionId);
+          await this.writeLatest({ power_active_import_kw: { v: 0, u: "kW" }, current_import_l1_a: { v: 0, u: "A" } });
+          await this.record("transaction_stop", { transaction: s.transactionId, reason: s.reason ?? null, energy_kwh: Math.round(s.meterStop - meterStart) / 1000, status: summary.status }, sessionId);
+          if (summary.status === "suspect") await this.record("session_suspect", { reason: summary.suspect_reason ?? "" }, sessionId);
+        };
+        try {
+          await finish();
+          this.retries.cancel(this.stopKey(s.transactionId)); // a closing of this charge that was waiting must not overwrite the real one
+        } catch (error) {
+          this.d.log.warn({ equipmentId: this.info.equipmentId, transaction: s.transactionId, err: error instanceof Error ? error.message : String(error) }, "could not store a stop report; trying again");
+          this.retries.add(this.stopKey(s.transactionId), 2, finish);
         }
-        const ref = await this.d.store.sessionByTransaction(this.info.equipmentId, s.transactionId);
-        const endedAt = this.when(s.timestamp, "stop");
-        const startedAt = ref?.startedAt ?? endedAt;
-        const meterStart = ref?.meterStartWh ?? s.meterStop;
-        const samples = await this.d.store.sessionSamples(sessionId);
-        const summary = summarize(samples, meterStart, s.meterStop, Date.parse(startedAt) / 1000, Date.parse(endedAt) / 1000);
-        await this.d.store.sessionStop(sessionId, endedAt, s.meterStop, s.reason ?? "Local", summary);
-        await this.writeLatest({ power_active_import_kw: { v: 0, u: "kW" }, current_import_l1_a: { v: 0, u: "A" } });
-        await this.record("transaction_stop", { transaction: s.transactionId, reason: s.reason ?? null, energy_kwh: Math.round(s.meterStop - meterStart) / 1000, status: summary.status }, sessionId);
-        if (summary.status === "suspect") await this.record("session_suspect", { reason: summary.suspect_reason ?? "" }, sessionId);
         return { idTagInfo: { status: "Accepted" } };
       }
 
@@ -519,20 +557,52 @@ export class OcppConnection {
     this.sessionIds.delete(o.transactionId);
     this.clearOrphanTimer(connector);
     try {
-      const samples = await this.d.store.sessionSamples(o.sessionId);
-      const last = [...samples].sort((a, b) => a.ts - b.ts).at(-1);
-      const ref = await this.d.store.sessionByTransaction(this.info.equipmentId, o.transactionId);
-      const meterStart = o.meterStartWh ?? ref?.meterStartWh ?? 0;
-      const lastWh = last?.energy_kwh != null ? Math.round(last.energy_kwh * 1000) : null;
-      const meterStop = lastWh !== null && lastWh >= meterStart ? lastWh : meterStart;
-      const startedAt = ref?.startedAt ?? new Date(this.now()).toISOString();
-      const endedAt = last ? new Date(last.ts * 1000).toISOString() : new Date(this.now()).toISOString();
-      const summary = summarize(samples, meterStart, meterStop, Date.parse(startedAt) / 1000, Date.parse(endedAt) / 1000);
-      if (summary.status === "completed") summary.status = "aborted";
-      await this.d.store.sessionStop(o.sessionId, endedAt, meterStop, "MissingStop", summary);
-      await this.record("session_closed_without_stop", { transaction: o.transactionId, why, energy_kwh: Math.round(meterStop - meterStart) / 1000 }, o.sessionId);
+      await this.persistOrphan(o, why);
     } catch (error) {
-      this.d.log.warn({ equipmentId: this.info.equipmentId, err: error instanceof Error ? error.message : String(error) }, "could not close a session without a stop");
+      this.d.log.warn({ equipmentId: this.info.equipmentId, err: error instanceof Error ? error.message : String(error) }, "could not close a session without a stop; trying again");
+      // tried again until the database answers; the charger's own stop report, if it comes, replaces this (it has the higher priority)
+      this.retries.add(this.stopKey(o.transactionId), 1, () => this.persistOrphan(o, why));
+    }
+  }
+
+  private async persistOrphan(o: OpenSession, why: string): Promise<void> {
+    const samples = await this.d.store.sessionSamples(o.sessionId);
+    const last = [...samples].sort((a, b) => a.ts - b.ts).at(-1);
+    const ref = await this.d.store.sessionByTransaction(this.info.equipmentId, o.transactionId);
+    const meterStart = o.meterStartWh ?? ref?.meterStartWh ?? 0;
+    const lastWh = last?.energy_kwh != null ? Math.round(last.energy_kwh * 1000) : null;
+    const meterStop = lastWh !== null && lastWh >= meterStart ? lastWh : meterStart;
+    const startedAt = ref?.startedAt ?? new Date(this.now()).toISOString();
+    const endedAt = last ? new Date(last.ts * 1000).toISOString() : new Date(this.now()).toISOString();
+    const summary = summarize(samples, meterStart, meterStop, Date.parse(startedAt) / 1000, Date.parse(endedAt) / 1000);
+    if (summary.status === "completed") summary.status = "aborted";
+    await this.d.store.sessionStop(o.sessionId, endedAt, meterStop, "MissingStop", summary);
+    await this.record("session_closed_without_stop", { transaction: o.transactionId, why, energy_kwh: Math.round(meterStop - meterStart) / 1000 }, o.sessionId);
+  }
+
+  // ---- a stop asked for while the charger was out of contact
+
+  /** Sends the stops that were asked for while this charger was not connected (see OcppHub.queueStop), once it is back. */
+  private sendQueuedStops(transactionIds: number[]): void {
+    if (transactionIds.length === 0 || this.closed) return;
+    const timer = setTimeout(() => {
+      for (const tx of transactionIds) void this.sendQueuedStop(tx, 1);
+    }, this.d.queuedStopDelayMs ?? 2_000);
+    timer.unref();
+  }
+
+  private async sendQueuedStop(transactionId: number, attempt: number): Promise<void> {
+    if (this.closed) return;
+    try {
+      const r = (await this.call("RemoteStopTransaction", { transactionId })) as { status?: string };
+      await this.record("queued_stop_sent", { transaction: transactionId, attempt, status: r?.status ?? "unknown" });
+    } catch (error) {
+      if (attempt < 3 && !this.closed) {
+        const again = setTimeout(() => void this.sendQueuedStop(transactionId, attempt + 1), this.d.queuedStopRetryMs ?? 15_000);
+        again.unref();
+        return;
+      }
+      await this.record("queued_stop_failed", { transaction: transactionId, error: error instanceof Error ? error.message.slice(0, 120) : "unknown" });
     }
   }
 

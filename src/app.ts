@@ -69,7 +69,7 @@ export interface Deps {
   /** the clock the report rules use (limits on how far back and how far ahead); tests fix it */
   clock: () => number;
   /** timings of the charger connections that tests shorten */
-  ocppTimings: { orphanGraceMs?: number; cutoffRetryMs?: number };
+  ocppTimings: { orphanGraceMs?: number; cutoffRetryMs?: number; retryDelaysMs?: number[]; queuedStopDelayMs?: number; queuedStopRetryMs?: number };
 }
 
 export interface BuildOptions {

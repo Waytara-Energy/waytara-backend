@@ -44,7 +44,7 @@ beforeEach(async () => {
   bus = new KeyChangeBus();
   files = new MemoryObjectStore();
   const db = new FakeDb();
-  app = await testApp({}, { db, verify, vault, store: new FakeStore(), evStore: ev, bus, objectStore: files, ocppTimings: { orphanGraceMs: 150, cutoffRetryMs: 250 } } as never);
+  app = await testApp({}, { db, verify, vault, store: new FakeStore(), evStore: ev, bus, objectStore: files, ocppTimings: { orphanGraceMs: 150, cutoffRetryMs: 250, retryDelaysMs: [60], queuedStopDelayMs: 50, queuedStopRetryMs: 60 } } as never);
   await app.listen({ host: "127.0.0.1", port: 0 });
   port = (app.server.address() as AddressInfo).port;
 });
@@ -402,6 +402,32 @@ describe("commands from people", () => {
     expect((await post(`/v1/ev/${EQ}/remote-start`, {})).json().status).toBe("Rejected");
   });
 
+  it("keeps a stop for a charger that is out of contact and sends it as soon as it connects", async () => {
+    const queued = await post(`/v1/ev/${EQ}/remote-stop`, { transaction_id: 1012 });
+    expect(queued.statusCode).toBe(202);
+    expect(queued.json().status).toBe("Queued");
+    expect(ev.events.find((e) => e.kind === "command")!.detail).toMatchObject({ command: "remote-stop-queued", by: OWNER, transaction: 1012 });
+    const ws = await connect();
+    const asked = answerServerCalls(ws);
+    expect(await until(() => asked.some((a) => a.action === "RemoteStopTransaction"))).toBe(true);
+    expect(asked.find((a) => a.action === "RemoteStopTransaction")!.payload).toEqual({ transactionId: 1012 });
+    expect(await until(() => ev.events.some((e) => e.kind === "queued_stop_sent"))).toBe(true);
+  });
+
+  it("sends a queued stop only once, and a stranger cannot queue one", async () => {
+    expect((await post(`/v1/ev/${EQ}/remote-stop`, { transaction_id: 7 }, "tok-stranger")).statusCode).toBe(404);
+    await post(`/v1/ev/${EQ}/remote-stop`, { transaction_id: 1012 });
+    const first = await connect();
+    const asked = answerServerCalls(first);
+    await until(() => asked.some((a) => a.action === "RemoteStopTransaction"));
+    first.terminate();
+    await wait(200);
+    const second = await connect();
+    const again = answerServerCalls(second);
+    await wait(400);
+    expect(again.filter((a) => a.action === "RemoteStopTransaction")).toHaveLength(0);
+  });
+
   it("says plainly when the charger is not connected", async () => {
     const r = await post(`/v1/ev/${EQ}/remote-start`, {});
     expect(r.statusCode).toBe(409);
@@ -624,5 +650,63 @@ describe("charging a number of units", () => {
     expect((await post(`/v1/ev/${EQ}/remote-start`, { target_kwh: 0 })).statusCode).toBe(400);
     expect((await post(`/v1/ev/${EQ}/remote-start`, { target_kwh: 5000 })).statusCode).toBe(400);
     expect((await post(`/v1/ev/${EQ}/remote-start`, { target_kwh: "ten" })).statusCode).toBe(400);
+  });
+});
+
+// ---- the database being unreachable (3 Nov 2026, charge 1012: the stop report was lost and the charge stayed open)
+
+describe("a stop report the database could not store", () => {
+  const start = (ws: WebSocket, meterStart = 1000) => call(ws, "StartTransaction", { connectorId: 1, idTag: "T", meterStart, timestamp: iso(-60) });
+
+  it("is kept and stored when the database is back, and the charger is told it was accepted", async () => {
+    const ws = await connect();
+    const tx = ((await start(ws, 1000))[2] as { transactionId: number }).transactionId;
+    ev.failNext = 2; // the first try and the first retry fail
+    const r = await call(ws, "StopTransaction", { transactionId: tx, meterStop: 1900, timestamp: iso(), reason: "Remote" });
+    expect(r[0]).toBe(3);
+    expect(ev.sessions[0]!.endedAt).toBeNull();
+    expect(await until(() => ev.sessions[0]!.endedAt !== null, 4000)).toBe(true);
+    expect(ev.sessions[0]!.reason).toBe("Remote");
+    expect(ev.sessions[0]!.meterStopWh).toBe(1900);
+    expect(ev.sessions[0]!.summary?.status).toBe("completed");
+  });
+
+  it("is kept even when the session had to be looked up in the database (the charger reconnected meanwhile)", async () => {
+    const ws = await connect();
+    const tx = ((await start(ws, 1000))[2] as { transactionId: number }).transactionId;
+    ws.terminate();
+    await wait(300);
+    const again = await connect();
+    ev.failNext = 1;
+    const r = await call(again, "StopTransaction", { transactionId: tx, meterStop: 1500, timestamp: iso(), reason: "Remote" });
+    expect(r[0]).toBe(3);
+    expect(await until(() => ev.sessions[0]!.endedAt !== null, 4000)).toBe(true);
+    expect(ev.sessions[0]!.meterStopWh).toBe(1500);
+  });
+
+  it("is not overwritten by WayTara's own closing of the charge that was waiting for the database", async () => {
+    const ws = await connect();
+    const tx = ((await start(ws, 1000))[2] as { transactionId: number }).transactionId;
+    await call(ws, "MeterValues", mv({ kwh: 1.2, kw: 3, ts: iso(-30) }));
+    ev.failNext = 5;
+    await call(ws, "StatusNotification", { connectorId: 1, status: "Finishing", errorCode: "NoError", timestamp: iso() });
+    await wait(300); // the connector says Finishing, no stop comes, WayTara tries to close the charge: the database is down, it waits
+    expect(ev.sessions[0]!.endedAt).toBeNull();
+    ev.failNext = 0; // the database is back, and then the charger's real stop arrives
+    await call(ws, "StopTransaction", { transactionId: tx, meterStop: 1800, timestamp: iso(), reason: "Remote" });
+    await wait(300);
+    expect(ev.sessions[0]!.reason).toBe("Remote");
+    expect(ev.sessions[0]!.meterStopWh).toBe(1800);
+  });
+
+  it("closes a charge whose stop never came once the database is back", async () => {
+    const ws = await connect();
+    await start(ws, 1000);
+    await call(ws, "MeterValues", mv({ kwh: 1.5, kw: 3, ts: iso(-30) }));
+    ev.failNext = 1;
+    await call(ws, "StatusNotification", { connectorId: 1, status: "Available", errorCode: "NoError", timestamp: iso() });
+    expect(await until(() => ev.sessions[0]!.endedAt !== null, 4000)).toBe(true);
+    expect(ev.sessions[0]!.reason).toBe("MissingStop");
+    expect(ev.sessions[0]!.meterStopWh).toBe(1500);
   });
 });

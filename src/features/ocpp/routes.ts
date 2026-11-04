@@ -275,9 +275,18 @@ export async function registerOcppRoutes(app: FastifyInstance, d: OcppRouteDeps)
     }
   });
 
-  app.post("/v1/ev/:equipment/remote-stop", { ...signedIn, config: limited }, async (request) => {
+  app.post("/v1/ev/:equipment/remote-stop", { ...signedIn, config: limited }, async (request, reply) => {
     const { equipment } = parse(id, request.params);
     const b = parse(z.object({ transaction_id: z.number().int() }), request.body);
+    // A charger that is out of contact cannot be told anything, and a charge goes on without a stop. The stop is kept and sent the moment the
+    // charger connects again (within 30 minutes), and the person is told so: "Queued", not an error.
+    if (!d.hub.get(equipment)) {
+      await allowed(request, equipment);
+      d.hub.queueStop(equipment, b.transaction_id);
+      await d.store.event(equipment, null, new Date().toISOString(), "command", { command: "remote-stop-queued", by: request.user!.id, transaction: b.transaction_id }).catch(() => undefined);
+      reply.status(202);
+      return { status: "Queued" };
+    }
     return command(request, equipment, "remote-stop", "RemoteStopTransaction", { transactionId: b.transaction_id });
   });
 
